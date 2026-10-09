@@ -92,6 +92,15 @@ public sealed class Usuario
 
     public void RegistrarPasoTotp(long paso) => UltimoPasoTotp = paso;
 
+    /// <summary>Cambia la contraseña y levanta el bloqueo por intentos fallidos. No toca el MFA.</summary>
+    public void CambiarContrasena(string nuevoHash)
+    {
+        HashContrasena = nuevoHash;
+        _fallosRecientes.Clear();
+        BloqueadoHasta = null;
+        BloqueosConsecutivos = 0;
+    }
+
     public void ConsumirCodigoRecuperacion(string hash) => _codigosRecuperacionHash.Remove(hash);
 
     /// <summary>Cierra el inicio de sesión: solo tras superar todos los factores exigidos.</summary>

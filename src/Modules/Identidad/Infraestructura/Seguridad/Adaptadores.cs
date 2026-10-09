@@ -58,3 +58,28 @@ public sealed class AvisosSeguridadProvisional(ILogger<AvisosSeguridadProvisiona
         return Task.CompletedTask;
     }
 }
+
+/// <summary>
+/// PROVISIONAL hasta el módulo 17: no envía nada. Registra solo que hay un mensaje pendiente; NUNCA el token,
+/// el código ni el destino, porque quien lea el log podría usarlos.
+/// </summary>
+public sealed class MensajeriaIdentidadProvisional(ILogger<MensajeriaIdentidadProvisional> log) : IMensajeriaIdentidad
+{
+    public Task EnviarEnlaceRecuperacionAsync(Usuario usuario, string token, DateTimeOffset expiraEn, CancellationToken ct = default) =>
+        Pendiente("recuperacion_contrasena", usuario.Id);
+
+    public Task NotificarCambioContrasenaAsync(Usuario usuario, CancellationToken ct = default) =>
+        Pendiente("cambio_contrasena", usuario.Id);
+
+    public Task EnviarInvitacionPacienteAsync(Guid pacienteId, CanalInvitacion canal, string destino, string token, DateTimeOffset expiraEn, CancellationToken ct = default) =>
+        Pendiente("invitacion_paciente", pacienteId);
+
+    public Task EnviarCodigoMfaAsync(Usuario usuario, string codigo, DateTimeOffset expiraEn, CancellationToken ct = default) =>
+        Pendiente("codigo_mfa", usuario.Id);
+
+    private Task Pendiente(string tipo, Guid destinatarioId)
+    {
+        log.LogWarning("mensaje_identidad_pendiente_de_envio tipo={Tipo} destinatario={DestinatarioId}", tipo, destinatarioId);
+        return Task.CompletedTask;
+    }
+}

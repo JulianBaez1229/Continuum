@@ -44,6 +44,12 @@ public static class ModuloIdentidad
         servicios.AddScoped<ISesiones, RepositorioSesionesEf>();
         servicios.AddScoped<ServicioSesiones>();
 
+        servicios.AddScoped<ITokensAccion, RepositorioTokensAccionEf>();
+        servicios.AddScoped<IMensajeriaIdentidad, MensajeriaIdentidadProvisional>();
+        servicios.AddSingleton<IContrasenasFiltradas, ContrasenasFiltradasLista>();
+        servicios.AddSingleton<PoliticaContrasena>();
+        servicios.AddScoped<ServicioRecuperacionContrasena>();
+
         servicios.AddScoped<ServicioInicioSesion>();
         servicios.AddScoped<ServicioMfa>();
         servicios.AddScoped<ServicioAutenticacion>();
