@@ -5,7 +5,8 @@ public sealed record RespuestaAutenticacion(
     string? TokenAcceso = null,
     string? TokenDesafio = null,
     DateTimeOffset? BloqueadoHasta = null,
-    string? TokenRenovacion = null);
+    string? TokenRenovacion = null,
+    MetodoSegundoFactor? Metodo = null);
 
 /// <summary>
 /// Orquesta el flujo de inicio de sesión del personal: clave → (configurar MFA | segundo factor) → sesión y tokens.
@@ -14,6 +15,7 @@ public sealed record RespuestaAutenticacion(
 public sealed class ServicioAutenticacion(
     ServicioInicioSesion inicioSesion,
     ServicioMfa mfa,
+    ServicioMfaPorMensaje mfaPorMensaje,
     ServicioSesiones sesiones,
     IRepositorioUsuarios usuarios,
     IEmisorTokens emisor)
@@ -26,8 +28,7 @@ public sealed class ServicioAutenticacion(
         return r.Estado switch
         {
             EstadoInicioSesion.Exitoso => await ConAccesoAsync(r.UsuarioId!.Value, ct),
-            EstadoInicioSesion.RequiereSegundoFactor =>
-                new(r.Estado, TokenDesafio: emisor.EmitirDesafio(r.UsuarioId!.Value, PropositoDesafio.SegundoFactor)),
+            EstadoInicioSesion.RequiereSegundoFactor => await DesafioSegundoFactorAsync(r, ct),
             EstadoInicioSesion.RequiereConfiguracionMfa =>
                 new(r.Estado, TokenDesafio: emisor.EmitirDesafio(r.UsuarioId!.Value, PropositoDesafio.ConfigurarMfa)),
             EstadoInicioSesion.CuentaBloqueada => new(r.Estado, BloqueadoHasta: r.BloqueadoHasta),
@@ -40,7 +41,15 @@ public sealed class ServicioAutenticacion(
     {
         if (emisor.ValidarDesafio(tokenDesafio, PropositoDesafio.SegundoFactor) is not { } usuarioId) return Invalida;
 
-        var r = await mfa.VerificarSegundoFactorAsync(usuarioId, codigo, ct);
+        var usuario = await usuarios.ObtenerPorIdAsync(usuarioId, ct);
+        if (usuario is null) return Invalida;
+
+        // El método lo fija el usuario, no el cliente: TOTP para quien exige MFA, código por mensaje si el paciente lo activó.
+        var r = usuario.RequiereMfa
+            ? await mfa.VerificarSegundoFactorAsync(usuarioId, codigo, ct)
+            : usuario.MfaPorMensajeHabilitado
+                ? await mfaPorMensaje.VerificarCodigoAccesoAsync(usuarioId, codigo, ct)
+                : new ResultadoInicioSesion(EstadoInicioSesion.CredencialesInvalidas);
         return r.Estado switch
         {
             EstadoInicioSesion.Exitoso => await ConAccesoAsync(usuarioId, ct),
@@ -82,6 +91,20 @@ public sealed class ServicioAutenticacion(
 
     public Task CerrarTodasLasSesionesAsync(Guid usuarioId, CancellationToken ct = default) =>
         sesiones.CerrarTodasAsync(usuarioId, ct);
+
+    /// <summary>Reenvía el código del inicio de sesión (respeta la espera entre envíos). Responde igual si no procede.</summary>
+    public async Task ReenviarCodigoAsync(string tokenDesafio, CancellationToken ct = default)
+    {
+        if (emisor.ValidarDesafio(tokenDesafio, PropositoDesafio.SegundoFactor) is { } usuarioId)
+            await mfaPorMensaje.EnviarCodigoAccesoAsync(usuarioId, ct);
+    }
+
+    private async Task<RespuestaAutenticacion> DesafioSegundoFactorAsync(ResultadoInicioSesion r, CancellationToken ct)
+    {
+        var usuarioId = r.UsuarioId!.Value;
+        if (r.Metodo == MetodoSegundoFactor.CodigoPorMensaje) await mfaPorMensaje.EnviarCodigoAccesoAsync(usuarioId, ct);
+        return new(r.Estado, TokenDesafio: emisor.EmitirDesafio(usuarioId, PropositoDesafio.SegundoFactor), Metodo: r.Metodo);
+    }
 
     private async Task<RespuestaAutenticacion> ConAccesoAsync(Guid usuarioId, CancellationToken ct)
     {

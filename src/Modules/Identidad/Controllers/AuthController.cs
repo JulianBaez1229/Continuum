@@ -14,12 +14,14 @@ public sealed record SolicitudCodigo([Required] string TokenDesafio, [Required] 
 public sealed record SolicitudDesafio([Required] string TokenDesafio);
 public sealed record SolicitudRenovacion([Required] string TokenRenovacion);
 public sealed record SolicitudReautenticacion([Required] string Contrasena, string? Codigo);
+public sealed record SolicitudCodigoMensaje([Required] string Codigo);
 public sealed record RespuestaReautenticacionDto(string TokenAcceso);
 public sealed record SolicitudRecuperacion([Required] string Correo);
 public sealed record SolicitudRestablecimiento([Required] string Token, [Required] string NuevaContrasena);
 
 public sealed record RespuestaLogin(
-    string Estado, string? TokenAcceso, string? TokenDesafio, DateTimeOffset? BloqueadoHasta, string? TokenRenovacion = null);
+    string Estado, string? TokenAcceso, string? TokenDesafio, DateTimeOffset? BloqueadoHasta, string? TokenRenovacion = null,
+    string? Metodo = null);
 public sealed record RespuestaInicioMfa(string Secreto, string UriOtpAuth);
 public sealed record RespuestaConfirmacionMfa(IReadOnlyList<string> CodigosRecuperacion);
 
@@ -43,7 +45,8 @@ public sealed class ConflictoConcurrenciaAttribute : ExceptionFilterAttribute
 [Route("api/auth")]
 [ConflictoConcurrencia]
 public sealed class AuthController(
-    ServicioAutenticacion auth, ServicioRecuperacionContrasena recuperacion, ServicioReautenticacion reautenticacion) : ControllerBase
+    ServicioAutenticacion auth, ServicioRecuperacionContrasena recuperacion, ServicioReautenticacion reautenticacion,
+    ServicioMfaPorMensaje mfaPorMensaje) : ControllerBase
 {
     private static ObjectResult Credenciales(string? codigo = null)
     {
@@ -68,7 +71,7 @@ public sealed class AuthController(
         EstadoInicioSesion.SesionExpirada => Credenciales("sesion_expirada"),
         EstadoInicioSesion.CuentaBloqueada => StatusCode(StatusCodes.Status423Locked,
             new RespuestaLogin(r.Estado.ToString(), null, null, r.BloqueadoHasta)),
-        _ => Ok(new RespuestaLogin(r.Estado.ToString(), r.TokenAcceso, r.TokenDesafio, null, r.TokenRenovacion)),
+        _ => Ok(new RespuestaLogin(r.Estado.ToString(), r.TokenAcceso, r.TokenDesafio, null, r.TokenRenovacion, r.Metodo?.ToString())),
     };
 
     [HttpPost("login")]
@@ -181,6 +184,69 @@ public sealed class AuthController(
     [HttpGet("reautenticacion/estado")]
     [Authorize(Policy = PoliticasIdentidad.ReautenticacionReciente)]
     public IActionResult EstadoReautenticacion() => NoContent();
+
+    // ---- Segundo factor opcional del paciente: código por mensaje (RF-IAM-003) ----
+
+    private Guid? UsuarioActual => Guid.TryParse(User.FindFirst("sub")?.Value, out var id) ? id : null;
+
+    /// <summary>Envía un código para activar el segundo factor. 409 si no procede (personal con TOTP o ya activo).</summary>
+    [HttpPost("mfa/mensaje/solicitar")]
+    [Authorize]
+    public async Task<IActionResult> SolicitarMfaMensaje(CancellationToken ct) =>
+        UsuarioActual is not { } id ? Forbid()
+        : await mfaPorMensaje.IniciarActivacionAsync(id, ct) switch
+        {
+            ResultadoSolicitudCodigo.Enviado => Accepted(),
+            ResultadoSolicitudCodigo.EsperaRequerida => StatusCode(StatusCodes.Status429TooManyRequests, new ProblemDetails
+            {
+                Status = StatusCodes.Status429TooManyRequests,
+                Title = "Espera un momento",
+                Detail = "Ya se envió un código hace menos de un minuto.",
+            }),
+            _ => Problema409("El segundo factor por mensaje no está disponible para esta cuenta."),
+        };
+
+    [HttpPost("mfa/mensaje/confirmar")]
+    [Authorize]
+    public async Task<IActionResult> ConfirmarMfaMensaje(SolicitudCodigoMensaje s, CancellationToken ct) =>
+        UsuarioActual is not { } id ? Forbid()
+        : await mfaPorMensaje.ConfirmarActivacionAsync(id, s.Codigo, ct) switch
+        {
+            ResultadoConfirmacionCodigo.Exito => NoContent(),
+            ResultadoConfirmacionCodigo.NoPermitido => Problema409("El segundo factor por mensaje no está disponible para esta cuenta."),
+            _ => UnprocessableEntity(new ProblemDetails
+            {
+                Status = StatusCodes.Status422UnprocessableEntity,
+                Title = "Código no válido",
+                Detail = "El código es incorrecto o venció. Solicita uno nuevo.",
+            }),
+        };
+
+    /// <summary>Exige una reautenticación reciente (RF-IAM-010).</summary>
+    [HttpPost("mfa/mensaje/desactivar")]
+    [Authorize(Policy = PoliticasIdentidad.ReautenticacionReciente)]
+    public async Task<IActionResult> DesactivarMfaMensaje(CancellationToken ct)
+    {
+        if (UsuarioActual is not { } id) return Forbid();
+        await mfaPorMensaje.DesactivarAsync(id, ct);
+        return NoContent();
+    }
+
+    /// <summary>Reenvía el código del inicio de sesión. Responde 202 siempre para no revelar nada.</summary>
+    [HttpPost("mfa/mensaje/reenviar")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ReenviarCodigo(SolicitudDesafio s, CancellationToken ct)
+    {
+        await auth.ReenviarCodigoAsync(s.TokenDesafio, ct);
+        return Accepted();
+    }
+
+    private static ObjectResult Problema409(string detalle) => new(new ProblemDetails
+    {
+        Status = StatusCodes.Status409Conflict,
+        Title = "No disponible",
+        Detail = detalle,
+    }) { StatusCode = StatusCodes.Status409Conflict };
 
     /// <summary>Identidad del token de acceso vigente. Sirve de comprobación y de base para el middleware de tenant.</summary>
     [HttpGet("yo")]

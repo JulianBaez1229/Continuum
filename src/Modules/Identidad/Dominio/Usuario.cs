@@ -43,6 +43,8 @@ public sealed class Usuario
     public string? SecretoTotpProtegido { get; private set; }
     public string? SecretoTotpPendienteProtegido { get; private set; }
     public long? UltimoPasoTotp { get; private set; }
+    /// <summary>RF-IAM-003: segundo factor opcional por código enviado al paciente. No aplica a quien exige TOTP.</summary>
+    public bool MfaPorMensajeHabilitado { get; private set; }
     public IReadOnlyList<string> CodigosRecuperacionHash => _codigosRecuperacionHash;
 
     /// <param name="requiereMfa">Seguro por defecto: solo pacientes y red de apoyo se crean con false.</param>
@@ -91,6 +93,16 @@ public sealed class Usuario
     }
 
     public void RegistrarPasoTotp(long paso) => UltimoPasoTotp = paso;
+
+    /// <summary>Falla (false) para quien exige MFA con TOTP: su segundo factor no se puede sustituir por un código por mensaje.</summary>
+    public bool HabilitarMfaPorMensaje()
+    {
+        if (RequiereMfa) return false;
+        MfaPorMensajeHabilitado = true;
+        return true;
+    }
+
+    public void DeshabilitarMfaPorMensaje() => MfaPorMensajeHabilitado = false;
 
     /// <summary>Cambia la contraseña y levanta el bloqueo por intentos fallidos. No toca el MFA.</summary>
     public void CambiarContrasena(string nuevoHash)

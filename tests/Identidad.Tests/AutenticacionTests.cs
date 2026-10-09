@@ -38,6 +38,7 @@ public class AutenticacionTests
         _auth = new ServicioAutenticacion(
             new ServicioInicioSesion(_repo, _hasher, _reloj, auditoria, avisos),
             new ServicioMfa(_repo, _hasher, new ProtectorFalso(), _reloj, auditoria, avisos),
+            new ServicioMfaPorMensaje(_repo, new TokensAccionFalsos(), _reloj, auditoria, avisos, new MensajeriaFalsa()),
             new ServicioSesiones(_sesiones, new PoliticaSesionFalsa(), _reloj, auditoria),
             _repo, new EmisorFalso());
     }

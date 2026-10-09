@@ -31,6 +31,7 @@ public sealed class IdentidadDbContext(DbContextOptions<IdentidadDbContext> opci
             u.Property(x => x.Estado).HasColumnName("estado").HasConversion<string>().HasMaxLength(20);
             u.Property(x => x.RequiereMfa).HasColumnName("requiere_mfa");
             u.Property(x => x.MfaHabilitado).HasColumnName("mfa_habilitado");
+            u.Property(x => x.MfaPorMensajeHabilitado).HasColumnName("mfa_mensaje_habilitado");
             u.Property(x => x.UltimoAcceso).HasColumnName("ultimo_acceso");
             u.Property<Guid>(ColumnaVersion).IsConcurrencyToken();
             u.HasIndex(x => x.Correo).IsUnique();

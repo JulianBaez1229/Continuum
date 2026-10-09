@@ -26,7 +26,7 @@ public abstract class SesionesApiBase(FabricaApi fabrica)
     protected readonly HttpClient Http = fabrica.CreateClient();
     protected FabricaApi Fabrica => fabrica;
 
-    protected sealed record Tokens(string Estado, string? TokenAcceso, string? TokenDesafio, string? TokenRenovacion);
+    protected sealed record Tokens(string Estado, string? TokenAcceso, string? TokenDesafio, string? TokenRenovacion, string? Metodo = null);
     private sealed record InicioMfa(string Secreto);
     protected string? UltimoSecreto { get; private set; }
 

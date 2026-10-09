@@ -141,6 +141,20 @@ public sealed class PersistenciaTests : IDisposable
     }
 
     [Fact]
+    public async Task RF_IAM_003_el_segundo_factor_por_mensaje_se_persiste()
+    {
+        var u = await InsertarAsync("pac@correo.test", requiereMfa: false);
+        var repo = NuevoRepo(out var db);
+        var cargado = (await repo.ObtenerPorIdAsync(u.Id))!;
+        Assert.False(cargado.MfaPorMensajeHabilitado);
+        cargado.HabilitarMfaPorMensaje();
+        await repo.GuardarAsync(cargado);
+        await db.DisposeAsync();
+
+        Assert.True((await NuevoRepo(out _).ObtenerPorIdAsync(u.Id))!.MfaPorMensajeHabilitado);
+    }
+
+    [Fact]
     public async Task RF_IAM_001_no_se_repite_el_correo()
     {
         await InsertarAsync("dup@clinica.test");
