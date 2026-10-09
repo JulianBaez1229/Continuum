@@ -25,6 +25,7 @@ internal sealed class RepositorioEnMemoria : IRepositorioUsuarios
         Task.FromResult(_usuarios.FirstOrDefault(u => u.Correo == Usuario.NormalizarCorreo(correo)));
     public Task<Usuario?> ObtenerPorIdAsync(Guid id, CancellationToken ct = default) =>
         Task.FromResult(_usuarios.FirstOrDefault(u => u.Id == id));
+    public Task AgregarAsync(Usuario usuario, CancellationToken ct = default) { _usuarios.Add(usuario); return Task.CompletedTask; }
     public Task GuardarAsync(Usuario usuario, CancellationToken ct = default) => Task.CompletedTask;
 }
 
