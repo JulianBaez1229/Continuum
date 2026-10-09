@@ -22,7 +22,16 @@ internal sealed class RepositorioFalso : IRepositorioUsuarios
     public void Agregar(Usuario u) => _usuarios.Add(u);
     public Task<Usuario?> ObtenerPorCorreoAsync(string correo, CancellationToken ct = default) =>
         Task.FromResult(_usuarios.FirstOrDefault(u => u.Correo == Usuario.NormalizarCorreo(correo)));
+    public Task<Usuario?> ObtenerPorIdAsync(Guid id, CancellationToken ct = default) =>
+        Task.FromResult(_usuarios.FirstOrDefault(u => u.Id == id));
     public Task GuardarAsync(Usuario usuario, CancellationToken ct = default) => Task.CompletedTask;
+}
+
+// Protección reversible de juguete; la real cifra con una clave de la aplicación.
+internal sealed class ProtectorFalso : IProtectorSecretos
+{
+    public string Proteger(string secreto) => "protegido:" + secreto;
+    public string Desproteger(string protegido) => protegido["protegido:".Length..];
 }
 
 internal sealed class AuditoriaFalsa : IAuditoriaIdentidad
