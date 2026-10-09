@@ -28,7 +28,7 @@ public sealed class Usuario
 
     public Guid Id { get; }
     public Guid OrganizacionId { get; }
-    public string Correo { get; }
+    public string Correo { get; private set; }
     public string HashContrasena { get; private set; }
     public EstadoUsuario Estado { get; private set; } = EstadoUsuario.Activo;
     public DateTimeOffset? BloqueadoHasta { get; private set; }
@@ -36,6 +36,19 @@ public sealed class Usuario
     public DateTimeOffset? UltimoAcceso { get; private set; }
 
     public static string NormalizarCorreo(string correo) => correo.Trim().ToLowerInvariant();
+
+    /// <summary>Forma mínima de un correo: un único «@» con texto a ambos lados, sin espacios, hasta 254 caracteres.</summary>
+    public static bool EsCorreoValido(string? correo)
+    {
+        if (string.IsNullOrWhiteSpace(correo)) return false;
+        var c = correo.Trim();
+        var arroba = c.IndexOf('@');
+        return c.Length <= 254
+            && arroba > 0
+            && arroba == c.LastIndexOf('@')
+            && arroba < c.Length - 1
+            && !c.Any(char.IsWhiteSpace);
+    }
 
     /// <summary>RF-IAM-002: obligatorio para todos los roles salvo PACIENTE y RED_APOYO.</summary>
     public bool RequiereMfa { get; }
@@ -50,6 +63,9 @@ public sealed class Usuario
         new(Guid.NewGuid(), organizacionId, NormalizarCorreo(correo), hashContrasena, requiereMfa);
 
     public void Desactivar() => Estado = EstadoUsuario.Inactivo;
+
+    /// <summary>RF-ROL-001: edición del correo por el administrador. Quien llama valida el formato y la unicidad.</summary>
+    public void CambiarCorreo(string correo) => Correo = NormalizarCorreo(correo);
 
     public bool EstaBloqueado(DateTimeOffset ahora) => BloqueadoHasta is { } hasta && hasta > ahora;
 

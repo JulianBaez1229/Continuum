@@ -16,6 +16,8 @@ public interface IRepositorioUsuarios
 {
     Task<Usuario?> ObtenerPorCorreoAsync(string correo, CancellationToken ct = default);
     Task<Usuario?> ObtenerPorIdAsync(Guid id, CancellationToken ct = default);
+    /// <summary>Alta de una cuenta nueva (RF-ROL-001). Falla si el correo ya existe.</summary>
+    Task AgregarAsync(Usuario usuario, CancellationToken ct = default);
     Task GuardarAsync(Usuario usuario, CancellationToken ct = default);
 }
 
