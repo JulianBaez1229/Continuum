@@ -13,9 +13,9 @@ public sealed class Usuario
     public static readonly TimeSpan BloqueoBase = TimeSpan.FromMinutes(15);
     public static readonly TimeSpan BloqueoMaximo = TimeSpan.FromHours(24);
 
-    private readonly List<DateTimeOffset> _fallosRecientes = [];
+    private List<DateTimeOffset> _fallosRecientes = [];
 
-    private readonly List<string> _codigosRecuperacionHash = [];
+    private List<string> _codigosRecuperacionHash = [];
 
     private Usuario(Guid id, Guid organizacionId, string correo, string hashContrasena, bool requiereMfa)
     {
