@@ -32,6 +32,10 @@ public interface IRelacionClinica
 /// <summary>Habilitación del profesional en una especialidad. Lo implementa Identidad.</summary>
 public interface IHabilitaciones
 {
+    /// <summary>
+    /// Habilitación del profesional en la especialidad; <c>null</c> significa que no tiene habilitación en esa
+    /// especialidad (la política responde <see cref="MotivoDenegacion.SinHabilitacion"/>, spec §10).
+    /// </summary>
     Task<HabilitacionProfesional?> ObtenerAsync(Guid profesionalId, Guid especialidadId, CancellationToken ct = default);
 }
 

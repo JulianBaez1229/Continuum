@@ -4,7 +4,8 @@ using Continuum.Identidad.Dominio.Autorizacion;
 namespace Continuum.Identidad.Tests.Autorizacion;
 
 // Dobles de los puertos del Autorizador. Cada uno cuenta las llamadas, guarda el último token (y los argumentos)
-// para verificar la carga perezosa, y lanza Fallo —después de registrar la llamada— si está asignado.
+// para verificar la carga perezosa, y lanza Fallo —después de registrar la llamada— si está asignado. El doble de
+// auditoría, en cambio, devuelve un Task fallido (como un adaptador asíncrono real) para que un `await` omitido se note.
 
 internal sealed class RolesPorSedeFalso : IRolesPorSede
 {
@@ -108,7 +109,9 @@ internal sealed class AuditoriaAutorizacionFalsa : IAuditoriaAutorizacion
     {
         Llamadas++;
         UltimoToken = ct;
-        if (Fallo is not null) throw Fallo;
+        // Un adaptador asíncrono real falla devolviendo un Task fallido, no lanzando de forma síncrona. Así la prueba
+        // detecta un `await` omitido en el Autorizador: sin él, la excepción se perdería en el Task descartado.
+        if (Fallo is not null) return Task.FromException(Fallo);
         Eventos.Add(evento);
         return Task.CompletedTask;
     }

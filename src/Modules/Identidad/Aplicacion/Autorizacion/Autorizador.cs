@@ -52,10 +52,12 @@ public sealed class Autorizador(
             return decision;
 
         var contexto = solicitud.Contexto;
+        // Los roles del evento son una copia (snapshot): el perfil es del puerto y el evento no debe cambiar con él.
+        IReadOnlyCollection<Rol> rolesDelEvento = perfil is null ? [] : [.. perfil.Roles];
         await auditoria.RegistrarDenegacionAsync(
             new EventoAutorizacion(
                 ahora, solicitud.UsuarioId, perfil?.OrganizacionId, solicitud.SedeActivaId,
-                (IReadOnlyCollection<Rol>?)perfil?.Roles ?? [], solicitud.Accion, solicitud.Recurso,
+                rolesDelEvento, solicitud.Accion, solicitud.Recurso,
                 contexto.RecursoId, contexto.PacienteId, decision.Tipo!.Value, decision.Motivo!.Value),
             ct);
         return decision;

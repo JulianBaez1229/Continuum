@@ -202,6 +202,28 @@ public class PoliticaAccesoTests
     }
 
     [Fact]
+    public void RF_ROL_005_propio_con_guid_empty_en_ambos_lados_no_concede()
+    {
+        // Guid.Empty no es una identidad legítima (es el valor por defecto de un Guid sin asignar): se trata como ausente,
+        // así que dos Guid.Empty iguales no son «propio». Un adaptador con un campo sin mapear no debe conceder acceso.
+        var noEsPropio = Decision.Denegar(TipoDenegacion.Prohibido, MotivoDenegacion.NoEsPropio);
+
+        // Paciente: vínculo del actor y PacienteId del recurso, ambos Guid.Empty.
+        Assert.Equal(
+            noEsPropio,
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.DatosDemograficos, Ctx(paciente: Guid.Empty),
+                Hechos([Rol.Paciente], pacienteDelActor: Guid.Empty)));
+        // Profesional: ProfesionalId de la ficha y del recurso, ambos Guid.Empty.
+        var profesionalSinIdReal = Hechos([Rol.Profesional], profesionalId: Guid.Empty);
+        Assert.Equal(
+            noEsPropio,
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.AgendaProfesional, Ctx(profesional: Guid.Empty, sede: Sede), profesionalSinIdReal));
+        Assert.Equal(
+            noEsPropio,
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.Reporte, Ctx(profesional: Guid.Empty, alcance: AlcanceReporte.Propio), profesionalSinIdReal));
+    }
+
+    [Fact]
     public void RF_ROL_005_paciente_lee_solo_ordenes_liberadas()
     {
         var paciente = Hechos([Rol.Paciente], pacienteDelActor: PacienteActor);
@@ -302,6 +324,33 @@ public class PoliticaAccesoTests
         Assert.Equal(
             sinPermiso,
             PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.Reporte, Ctx(alcance: (AlcanceReporte)99), Hechos([Rol.Director])));
+    }
+
+    [Fact]
+    public void RF_ROL_005_el_orden_sede_propio_liberado_se_evalua_en_ese_orden()
+    {
+        // Con dos condiciones incumplidas a la vez, el motivo es el de la primera etapa (R3 → R4 → R5).
+
+        // (i) R3 antes que R4: agenda de otro profesional y en otra sede → SEDE_DISTINTA, no NO_ES_PROPIO.
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SedeDistinta),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.AgendaProfesional, Ctx(profesional: OtroProfesional, sede: OtraSede),
+                Hechos([Rol.Profesional], profesionalId: ProfesionalActor)));
+
+        // (ii) R4 antes que R5: orden de otro paciente y sin liberar → NO_ES_PROPIO, no NO_LIBERADO.
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.NoEsPropio),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.Orden, Ctx(paciente: OtroPaciente, episodio: Episodio, liberado: false),
+                Hechos([Rol.Paciente], pacienteDelActor: PacienteActor)));
+    }
+
+    [Fact]
+    public void RF_ROL_005_reporte_de_otra_organizacion_con_alcance_nulo_es_no_encontrado()
+    {
+        // R1 va antes que la comprobación del alcance: un reporte ajeno sin alcance es «no encontrado», no DATOS_INSUFICIENTES.
+        Assert.Equal(
+            Decision.Denegar(TipoDenegacion.NoEncontrado, MotivoDenegacion.OtraOrganizacion),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.Reporte, Ctx(org: OtraOrganizacion, alcance: null), Hechos([Rol.Director])));
     }
 
     // ---- R6: relación clínica (RN-001) ----

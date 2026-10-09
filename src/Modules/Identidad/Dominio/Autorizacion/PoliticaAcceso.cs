@@ -214,7 +214,8 @@ public static class PoliticaAcceso
 
     /// <summary>
     /// Paciente: el recurso es de su paciente vinculado. Profesional: el recurso es suyo.
-    /// Ambos identificadores deben existir: dos nulos nunca son «propio». Ningún otro rol tiene recursos propios.
+    /// Ambos identificadores deben existir: dos nulos nunca son «propio», y <see cref="Guid.Empty"/> se trata como
+    /// ausente (no es una identidad legítima). Ningún otro rol tiene recursos propios.
     /// </summary>
     private static bool EsPropio(Rol rol, ContextoRecurso contexto, HechosAcceso hechos) => rol switch
     {
@@ -223,8 +224,11 @@ public static class PoliticaAcceso
         _ => false
     };
 
+    /// <summary>Ambos lados presentes (no nulos ni <see cref="Guid.Empty"/>) e iguales.</summary>
     private static bool MismoId(Guid? delRecurso, Guid? delActor) =>
-        delRecurso is { } recurso && delActor is { } actor && recurso == actor;
+        delRecurso is { } recurso && delActor is { } actor
+        && recurso != Guid.Empty && actor != Guid.Empty
+        && recurso == actor;
 
     private static ResultadoRol Denegado(Rol rol, Etapa etapa, MotivoDenegacion motivo) => new(rol, Prohibido(motivo), etapa);
 

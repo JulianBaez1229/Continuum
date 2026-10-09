@@ -15,6 +15,7 @@ public class AutorizadorTests
     private static readonly Guid Org = Guid.Parse("00000000-0000-0000-0000-0000000000a1");
     private static readonly Guid OtraOrg = Guid.Parse("00000000-0000-0000-0000-0000000000a2");
     private static readonly Guid Sede = Guid.Parse("00000000-0000-0000-0000-0000000000b1");
+    private static readonly Guid OtraSede = Guid.Parse("00000000-0000-0000-0000-0000000000b2");
     private static readonly Guid Usuario = Guid.Parse("00000000-0000-0000-0000-0000000000c1");
     private static readonly Guid ProfesionalActor = Guid.Parse("00000000-0000-0000-0000-0000000000d1");
     private static readonly Guid PacienteActor = Guid.Parse("00000000-0000-0000-0000-0000000000e1");
@@ -314,7 +315,9 @@ public class AutorizadorTests
         e.Relacion.Relacion = Tratante;
         e.Habilitaciones.Habilitacion = HabilitacionVigente;
 
-        var decision = await e.Autorizar(Accion.Crear, TipoRecurso.NotaClinica, Ctx(paciente: OtroPaciente, episodio: Episodio), cts.Token);
+        // El recurso es de otra sede que la activa: la zona horaria debe ser la de la sede ACTIVA, no la del recurso.
+        var decision = await e.Autorizar(
+            Accion.Crear, TipoRecurso.NotaClinica, Ctx(paciente: OtroPaciente, episodio: Episodio, sede: OtraSede), cts.Token);
 
         Assert.Equal(Decision.Permitir(NivelAcceso.Completo), decision);
         Assert.Equal(0, e.Vinculo.Llamadas);
@@ -359,7 +362,11 @@ public class AutorizadorTests
             e.Relacion.Relacion = Tratante;
             e.Habilitaciones.Habilitacion = venceAyerUtc;
             e.Zonas.Zona = zona;
-            return await e.Autorizar(Accion.Crear, TipoRecurso.NotaClinica, Ctx(paciente: OtroPaciente, episodio: Episodio));
+            // El recurso es de otra sede que la activa: «hoy» se mide en la zona de la sede ACTIVA, no en la del recurso.
+            var decision = await e.Autorizar(
+                Accion.Crear, TipoRecurso.NotaClinica, Ctx(paciente: OtroPaciente, episodio: Episodio, sede: OtraSede));
+            Assert.Equal(Sede, e.Zonas.UltimaSedeId);
+            return decision;
         }
 
         Assert.Equal(Decision.Permitir(NivelAcceso.Completo), await Escribir(utcMenos4));
@@ -465,6 +472,28 @@ public class AutorizadorTests
         Assert.Equal(OtroPaciente, evento.PacienteId);
         Assert.Equal(TipoDenegacion.Prohibido, evento.Tipo);
         Assert.Equal(MotivoDenegacion.SinRolEnSede, evento.Motivo);
+    }
+
+    [Fact]
+    public async Task RF_ROL_005_el_evento_conserva_los_roles_aunque_el_perfil_cambie_despues()
+    {
+        // Los roles del evento son una copia: el perfil lo entrega el puerto y podría reutilizarse o mutarse después,
+        // y el evento que ya se entregó a Auditoría no debe cambiar con él.
+        var rolesDelPerfil = new HashSet<Rol> { Rol.Recepcion };
+        var e = new Escenario([Rol.Recepcion]);
+        e.Roles.Perfil = new PerfilActor(Usuario, Org, rolesDelPerfil, null);
+
+        var decision = await e.Autorizar(Accion.Leer, TipoRecurso.NotaClinica, Ctx(paciente: OtroPaciente, episodio: Episodio));
+
+        Assert.Equal(Prohibido(MotivoDenegacion.SinPermisoDeRol), decision);
+        var evento = Assert.Single(e.Auditoria.Eventos);
+        Assert.Equal([Rol.Recepcion], evento.Roles);
+
+        rolesDelPerfil.Remove(Rol.Recepcion);
+        rolesDelPerfil.Add(Rol.Director);
+
+        Assert.Equal([Rol.Recepcion], evento.Roles);
+        Assert.Equal([Rol.Recepcion], e.Auditoria.Eventos[0].Roles);
     }
 
     [Fact]

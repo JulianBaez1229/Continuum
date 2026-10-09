@@ -161,7 +161,7 @@ La **organización del actor** no viaja en la solicitud: la devuelve `IRolesPorS
 | R1 | `Contexto.OrganizacionId` debe ser la organización del actor (`RN-015`) | `NoEncontrado` · `OTRA_ORGANIZACION` |
 | R2 | Para **cada rol** del actor se busca la celda rol × recurso × acción (× alcance en reportes) | sin celda en ningún rol: `Prohibido` · `SIN_PERMISO_DE_ROL` |
 | R3 | `MismaSede`: si la celda lo exige, `Contexto.SedeId` debe ser la sede activa (`RN-002`) | `SEDE_DISTINTA`. Sin `SedeId` en el contexto: `DATOS_INSUFICIENTES` |
-| R4 | `Propio`: paciente → `Contexto.PacienteId` = vínculo del actor; profesional → `Contexto.ProfesionalId` = su `ProfesionalId` | `NO_ES_PROPIO` |
+| R4 | `Propio`: paciente → `Contexto.PacienteId` = vínculo del actor; profesional → `Contexto.ProfesionalId` = su `ProfesionalId`. `Guid.Empty` se trata como ausente | `NO_ES_PROPIO` |
 | R5 | `Liberado`: `Contexto.LiberadoAlPaciente` debe ser `true` | `NO_LIBERADO` |
 | R6 | `Relacion` (T): la relación vigente con el episodio o paciente debe ser `Tratante` o `Equipo` (`RN-001`) | `SIN_RELACION_CLINICA` |
 | R7 | Sensibilidad (`RN-016`), solo si el episodio es sensible (ver abajo) | `EPISODIO_SENSIBLE` |
@@ -243,7 +243,7 @@ public sealed record EventoAutorizacion(
 ```
 
 - `Autorizador` registra **un evento por cada `Denegado`**. El puerto lo trata siempre como nivel **crítico**, resultado `denegado` (módulo 23 §2, «Seguridad», y `CA-AUD-003`).
-- El evento lleva solo identificadores y códigos. **Nunca** contenido clínico, nombres ni documentos de identidad.
+- El evento lleva solo identificadores y códigos. **Nunca** contenido clínico, nombres ni documentos de identidad. Los roles del evento son una copia del perfil: no cambian si el perfil se modifica después.
 - La IP, el agente y el `correlacion_id` los añade el adaptador de `Auditoria` desde la solicitud HTTP; la política no los ve.
 - El módulo `Auditoria` traduce `Recurso` + `Accion` al código del módulo 23 (por ejemplo `HCE.NOTA.VER`).
 - Los accesos **permitidos** los audita el módulo consumidor dentro de su propia transacción (`RF-AUD-008`). La política no controla esa transacción.
