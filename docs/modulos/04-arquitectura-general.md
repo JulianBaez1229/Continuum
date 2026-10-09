@@ -108,10 +108,10 @@ La asignatura combina tecnologías open source y propietarias; esta propuesta lo
 | ADR | Decisión | Estado |
 |---|---|---|
 | ADR-001 | Monolito modular frente a microservicios | Propuesta: monolito modular |
-| ADR-002 | Lenguaje y framework del backend | Pendiente |
-| ADR-003 | Motor de base de datos | Pendiente |
+| [ADR-002](../adr/ADR-002-lenguaje-y-framework-backend.md) | Lenguaje y framework del backend | **Aceptada**: ASP.NET Core |
+| [ADR-003](../adr/ADR-003-motor-de-base-de-datos.md) | Motor de base de datos | **Aceptada**: PostgreSQL |
 | ADR-004 | Estrategia multi-tenant (columna `organizacion_id` frente a esquema por organización) | Propuesta: columna + políticas RLS |
-| ADR-005 | Proveedor de identidad | Pendiente |
+| [ADR-005](../adr/ADR-005-proveedor-de-identidad.md) | Proveedor de identidad | **Aceptada**: identidad propia |
 | ADR-006 | Plantillas clínicas: esquema JSON versionado frente a tablas EAV | Propuesta: JSON Schema versionado |
 | ADR-007 | Proveedor de nube y región de alojamiento (residencia de datos) | Pendiente |
 | [ADR-008](../adr/ADR-008-paleta-de-colores.md) | Paleta de colores del sistema de diseño | **Aceptada**: "Bosque y salvia" (módulo 28) |

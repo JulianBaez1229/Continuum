@@ -7,6 +7,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 _Agrega aquí los cambios aprobados que todavía no forman parte de una versión._
 
 ### Agregado
+- `adr/ADR-002`, `ADR-003`, `ADR-005`: aceptadas (ASP.NET Core, PostgreSQL, identidad propia).
 - `CLAUDE.md`: contexto compartido para Claude Code (fuente de verdad, dueños, reglas obligatorias, pruebas, git).
 - `adr/ADR-008-paleta-de-colores.md`: decisión de la paleta "Bosque y salvia".
 
@@ -24,6 +25,7 @@ _Agrega aquí los cambios aprobados que todavía no forman parte de una versión
 ## [1.0.0] — 2026-10-02
 
 ### Agregado
+- `adr/ADR-002`, `ADR-003`, `ADR-005`: aceptadas (ASP.NET Core, PostgreSQL, identidad propia).
 - Especificación modular en 30 documentos a partir del documento "Continuum: plataforma de gestión y seguimiento para centros de salud mental" (Grupo 01, 25-sep-2026).
 - Generalización del alcance de **salud mental** a **clínicas multiespecialidad**: catálogo configurable de especialidades, procedimientos, plantillas de historia clínica y formularios.
 - Trazabilidad completa de RF01–RF13, RNF01–RNF10 y RN01–RN10 hacia los nuevos IDs por módulo.

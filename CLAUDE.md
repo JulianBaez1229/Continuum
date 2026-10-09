@@ -89,7 +89,7 @@ Los QA verifican cada `CA-*` con un caso `CP-*` en el ambiente de pruebas. Un er
 
 ## Stack y comandos
 
-> Pila **propuesta**, pendiente de confirmar por ADR (módulo 04). Actualizar esta sección cuando se acepten ADR-002, ADR-003 y ADR-005.
+> Pila aceptada por ADR-002, ADR-003 y ADR-005. Pendientes: ADR-007 (nube) y proveedor de correo/SMS.
 
 - Backend: ASP.NET Core (C#), monolito modular, arquitectura limpia por módulo.
 - Frontend: React + TypeScript (Vite).
