@@ -4,15 +4,17 @@ public sealed record RespuestaAutenticacion(
     EstadoInicioSesion Estado,
     string? TokenAcceso = null,
     string? TokenDesafio = null,
-    DateTimeOffset? BloqueadoHasta = null);
+    DateTimeOffset? BloqueadoHasta = null,
+    string? TokenRenovacion = null);
 
 /// <summary>
-/// Orquesta el flujo de inicio de sesión del personal: clave → (configurar MFA | segundo factor) → token de acceso.
-/// El token de acceso solo se emite cuando se han superado todos los factores exigidos al usuario.
+/// Orquesta el flujo de inicio de sesión del personal: clave → (configurar MFA | segundo factor) → sesión y tokens.
+/// Los tokens solo se emiten cuando se han superado todos los factores exigidos al usuario.
 /// </summary>
 public sealed class ServicioAutenticacion(
     ServicioInicioSesion inicioSesion,
     ServicioMfa mfa,
+    ServicioSesiones sesiones,
     IRepositorioUsuarios usuarios,
     IEmisorTokens emisor)
 {
@@ -59,11 +61,35 @@ public sealed class ServicioAutenticacion(
             ? await mfa.ConfirmarConfiguracionAsync(id, codigo, ct)
             : new(false, []);
 
+    /// <summary>Canjea el token de renovación por un acceso nuevo y un token de renovación nuevo (rotación).</summary>
+    public async Task<RespuestaAutenticacion> RenovarAsync(string tokenRenovacion, CancellationToken ct = default)
+    {
+        var r = await sesiones.RenovarAsync(tokenRenovacion, ct);
+        if (r.Estado == EstadoRenovacion.SesionExpirada) return new(EstadoInicioSesion.SesionExpirada);
+        if (r.Estado != EstadoRenovacion.Exitosa) return Invalida;
+
+        var usuario = await usuarios.ObtenerPorIdAsync(r.Sesion!.UsuarioId, ct);
+        if (usuario is null || usuario.Estado != Dominio.EstadoUsuario.Activo)
+        {
+            await sesiones.CerrarAsync(r.Sesion.Id, ct);
+            return Invalida;
+        }
+        return new(EstadoInicioSesion.Exitoso,
+            TokenAcceso: emisor.EmitirAcceso(usuario, r.Sesion.Id), TokenRenovacion: r.TokenRenovacion);
+    }
+
+    public Task CerrarSesionAsync(Guid sesionId, CancellationToken ct = default) => sesiones.CerrarAsync(sesionId, ct);
+
+    public Task CerrarTodasLasSesionesAsync(Guid usuarioId, CancellationToken ct = default) =>
+        sesiones.CerrarTodasAsync(usuarioId, ct);
+
     private async Task<RespuestaAutenticacion> ConAccesoAsync(Guid usuarioId, CancellationToken ct)
     {
         var usuario = await usuarios.ObtenerPorIdAsync(usuarioId, ct);
-        return usuario is null
-            ? Invalida
-            : new(EstadoInicioSesion.Exitoso, TokenAcceso: emisor.EmitirAcceso(usuario));
+        if (usuario is null) return Invalida;
+
+        var (sesion, tokenRenovacion) = await sesiones.IniciarAsync(usuario, ct);
+        return new(EstadoInicioSesion.Exitoso,
+            TokenAcceso: emisor.EmitirAcceso(usuario, sesion.Id), TokenRenovacion: tokenRenovacion);
     }
 }

@@ -34,6 +34,7 @@ public sealed class EmisorTokensJwt : IEmisorTokens
 {
     private const string ClaveOrganizacion = "org";
     private const string ClaveProposito = "prp";
+    public const string ClaveSesion = "sid";
     private readonly OpcionesJwt _opciones;
     private readonly IReloj _reloj;
     private readonly JsonWebTokenHandler _manejador = new();
@@ -45,12 +46,13 @@ public sealed class EmisorTokensJwt : IEmisorTokens
         _reloj = reloj;
     }
 
-    public string EmitirAcceso(Usuario usuario) => Emitir(
+    public string EmitirAcceso(Usuario usuario, Guid sesionId) => Emitir(
         _opciones.AudienciaAcceso, TimeSpan.FromMinutes(_opciones.MinutosAcceso),
         new Dictionary<string, object>
         {
             [JwtRegisteredClaimNames.Sub] = usuario.Id.ToString(),
             [ClaveOrganizacion] = usuario.OrganizacionId.ToString(),
+            [ClaveSesion] = sesionId.ToString(),
         });
 
     public string EmitirDesafio(Guid usuarioId, PropositoDesafio proposito) => Emitir(

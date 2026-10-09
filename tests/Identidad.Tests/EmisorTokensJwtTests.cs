@@ -10,15 +10,17 @@ public class EmisorTokensJwtTests
     private readonly RelojFalso _reloj = new();
     private readonly OpcionesJwt _opciones = new() { Clave = new string('k', 48) };
     private readonly Usuario _usuario = Usuario.Crear(Guid.NewGuid(), "x@clinica.test", "hash");
+    private readonly Guid _sesionId = Guid.NewGuid();
 
     private EmisorTokensJwt Emisor(OpcionesJwt? opciones = null) => new(opciones ?? _opciones, _reloj);
 
     [Fact]
     public void RF_IAM_006_el_token_de_acceso_dura_15_minutos_y_lleva_usuario_y_organizacion()
     {
-        var token = new JsonWebTokenHandler().ReadJsonWebToken(Emisor().EmitirAcceso(_usuario));
+        var token = new JsonWebTokenHandler().ReadJsonWebToken(Emisor().EmitirAcceso(_usuario, _sesionId));
         Assert.Equal(_usuario.Id.ToString(), token.Subject);
         Assert.Equal(_usuario.OrganizacionId.ToString(), token.GetClaim("org").Value);
+        Assert.Equal(_sesionId.ToString(), token.GetClaim("sid").Value);
         Assert.Equal(_reloj.Ahora.AddMinutes(15).ToUnixTimeSeconds(), new DateTimeOffset(token.ValidTo).ToUnixTimeSeconds());
     }
 
@@ -51,7 +53,7 @@ public class EmisorTokensJwtTests
     public void RF_IAM_006_un_token_de_acceso_no_sirve_como_desafio()
     {
         var emisor = Emisor();
-        Assert.Null(emisor.ValidarDesafio(emisor.EmitirAcceso(_usuario), PropositoDesafio.SegundoFactor));
+        Assert.Null(emisor.ValidarDesafio(emisor.EmitirAcceso(_usuario, _sesionId), PropositoDesafio.SegundoFactor));
     }
 
     [Fact]

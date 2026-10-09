@@ -11,6 +11,8 @@ public enum EstadoInicioSesion
     RequiereSegundoFactor,
     /// <summary>Primer factor correcto; debe configurar MFA antes de cualquier otra función (CA-IAM-001).</summary>
     RequiereConfiguracionMfa,
+    /// <summary>La sesión cerró por inactividad o duración máxima (CA-IAM-003): hay que autenticarse de nuevo.</summary>
+    SesionExpirada,
 }
 
 public sealed record ResultadoInicioSesion(
