@@ -1,4 +1,5 @@
 using Continuum.Identidad.Aplicacion;
+using Continuum.Identidad.Aplicacion.Administracion;
 using Continuum.Identidad.Dominio;
 
 namespace Continuum.Identidad.Infraestructura.Memoria;
@@ -20,7 +21,7 @@ public sealed class RepositorioUsuariosMemoria(AlmacenMemoria almacen) : IReposi
     public Task AgregarAsync(Usuario usuario, CancellationToken ct = default)
     {
         if (almacen.Usuarios.Any(u => u.Correo == usuario.Correo))
-            throw new InvalidOperationException("Ya existe una cuenta con ese correo.");
+            throw new ViolacionDeUnicidadException("Ya existe una cuenta con ese correo.");
         almacen.Usuarios.Add(usuario);
         return Task.CompletedTask;
     }

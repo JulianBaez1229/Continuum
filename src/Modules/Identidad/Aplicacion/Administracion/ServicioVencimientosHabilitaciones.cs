@@ -7,6 +7,10 @@ namespace Continuum.Identidad.Aplicacion.Administracion;
 /// tarea programada por organización (no un usuario), así que no recibe actor. El aviso se envía una sola vez por fecha
 /// de vencimiento y solo lleva identificadores y fechas (RN-016). Si el envío falla, nada se marca y se reintenta en la
 /// siguiente corrida (entrega al menos una vez).
+/// <para>
+/// Solo para tareas programadas: <c>organizacionId</c> sale de la configuración del planificador y nunca debe llegar
+/// de una solicitud de usuario, porque este servicio no autoriza (no hay actor).
+/// </para>
 /// </summary>
 public sealed class ServicioVencimientosHabilitaciones(
     IRepositorioHabilitaciones habilitaciones, IAvisosAdministracion avisos, IUnidadDeTrabajo unidadDeTrabajo, IReloj reloj)

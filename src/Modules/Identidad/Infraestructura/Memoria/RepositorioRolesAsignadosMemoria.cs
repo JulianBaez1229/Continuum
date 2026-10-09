@@ -26,6 +26,8 @@ public sealed class RepositorioRolesAsignadosMemoria(AlmacenMemoria almacen) : I
 
     public Task AgregarAsync(RolAsignado asignacion, CancellationToken ct = default)
     {
+        if (almacen.Roles.Contains(asignacion))
+            throw new ViolacionDeUnicidadException("El usuario ya tiene ese rol en esa sede.");
         almacen.Roles.Add(asignacion);
         return Task.CompletedTask;
     }

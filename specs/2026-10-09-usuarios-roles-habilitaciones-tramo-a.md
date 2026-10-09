@@ -32,7 +32,7 @@ ServicioVencimientosHabilitaciones ── IAvisosAdministracion   ← tarea prog
 - **Otra organización → 404** (`RN-015`). El actor nunca declara su organización: sale de su perfil. Cada intento se audita como crítico.
 - **Denegaciones auditadas.** Evento `AccesoAdministracionDenegado` (crítico) con el código del motivo. Si la bitácora falla, la excepción se propaga y no se concede nada.
 - **Habilitación vencida.** `IHabilitaciones` devuelve la habilitación aunque esté vencida y la política (R8) decide con la fecha local de la sede: la que vence hoy sigue vigente hoy. Una revocada devuelve `null` (`SIN_HABILITACION`).
-- **Sin borrado.** Usuarios se desactivan; habilitaciones se revocan; al actualizar una revocada se reactiva. Desactivar un usuario cierra todas sus sesiones.
+- **Sin borrado.** Usuarios se desactivan; habilitaciones se revocan; al actualizar una revocada se reactiva (la bitácora lo marca con `reactivada=true`). Desactivar un usuario cierra todas sus sesiones.
 - **Aviso de 30 días.** Una vez por fecha de vencimiento; cambiar la fecha reabre el aviso. Solo lleva ids, fecha y días restantes (`RN-016`). Si el envío falla no se marca y se reintenta.
 - **Bitácora sin datos personales.** Los eventos llevan ids, rol, sede, especialidad y fecha. Nunca correos, nombres ni números de licencia.
 
@@ -61,8 +61,14 @@ Los repositorios en memoria (`Infraestructura/Memoria`) **no** están registrado
 
 ## Puntos abiertos (para decidir, no se asumieron)
 
-1. **Último `ADMIN_FUNCIONAL`.** Decidido por Julian (2026-10-09): no se puede desactivar ni quitar el rol al último administrador activo de la organización (`ULTIMO_ADMINISTRADOR`). El rol de administrador principal con aprobación para desactivar a otros queda en `specs/SC-002-borrador-administrador-principal-y-aprobacion.md`, pendiente de aprobación del equipo.
-2. **El MFA de una cuenta depende de sus roles** (`RF-IAM-002`: todos menos `PACIENTE` y `RED_APOYO`), pero `requiere_mfa` se fija al crear. Las cuentas creadas por el administrador son de personal y lo exigen siempre.
+1. **Último `ADMIN_FUNCIONAL`.** Decidido por Julian (2026-10-09): no se puede desactivar ni quitar el rol al último administrador activo de la organización (`ULTIMO_ADMINISTRADOR`). El rol de administrador principal con aprobación para desactivar a otros queda en `specs/SC-003-borrador-administrador-principal-y-aprobacion.md`, pendiente de aprobación del equipo.
+2. **El MFA de una cuenta depende de sus roles** (`RF-IAM-002`: todos menos `PACIENTE` y `RED_APOYO`), pero `requiere_mfa` se fija al crear. Las cuentas creadas por el administrador son de personal y lo exigen siempre, y asignar un rol de personal a una cuenta sin MFA se rechaza (`CUENTA_SIN_MFA_OBLIGATORIO`). Falta decidir si `requiere_mfa` debe derivarse de los roles y si `PACIENTE` o `RED_APOYO` deben poder asignarse a cuentas de personal.
 3. **Correo único entre organizaciones**: el índice es global, así que un administrador puede saber que un correo existe en otra organización al recibir `CORREO_DUPLICADO`.
 4. **Persistencia (Dev B):** tablas `rol_asignado`, `profesional` y `habilitacion` (incluida `avisada_para_vencimiento`) y la implementación de `IUnidadDeTrabajo` con la transacción de EF.
 5. **Rollback de `Usuario` en memoria:** la versión en memoria de la transacción no deshace cambios sobre una cuenta ya cargada; con la base de datos real, sí.
+6. **Reautenticación del administrador (riesgo abierto).** Las operaciones de administración se autorizan con la sesión vigente; no piden una verificación reciente de identidad. Conviene decidir si crear, desactivar o cambiar roles exige reautenticación reciente (`RF-IAM-010`), y ligarlo a la solicitud de cambio del administrador principal.
+7. **Cierre de tokens de acción al desactivar.** Desactivar cierra las sesiones, pero los enlaces o tokens de acción pendientes (`ITokensAccion`, tramo de `RF-IAM-005`) deberían invalidarse también; se agrega cuando ese puerto esté en `main`.
+8. **Reactivar cuentas.** No hay caso de uso para reactivar una cuenta desactivada; hay que decidir si se necesita y quién lo aprueba.
+9. **Aviso de vencimiento.** Hoy lo reciben solo los administradores y lleva únicamente identificadores; falta decidir si el profesional también lo recibe y con qué texto genérico (`RN-016`).
+10. **`ADMIN_FUNCIONAL` por sede.** La asignación es por sede, pero la protección del último administrador cuenta por organización; hay que decidir si el rol debe ser de toda la organización.
+11. **Unicidad.** Las comprobaciones de duplicados se hacen dentro de la transacción y el repositorio real debe lanzar `ViolacionDeUnicidadException` cuando una restricción única de la base la rechace; así el caso de uso devuelve `Conflicto` y no un error 500.

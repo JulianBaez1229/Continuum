@@ -30,17 +30,17 @@ public sealed class ServicioUsuarios(
         var perfil = acceso.Perfil!;
 
         if (!Usuario.EsCorreoValido(correo)) return ResultadoOperacion.Invalida("CORREO_INVALIDO");
-        if (await usuarios.ObtenerPorCorreoAsync(correo, ct) is not null) return ResultadoOperacion.Conflicto("CORREO_DUPLICADO");
 
         var contrasenaDescartable = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         var usuario = Usuario.Crear(perfil.OrganizacionId, correo, hasheador.Hashear(contrasenaDescartable), requiereMfa: true);
 
-        await unidadDeTrabajo.EjecutarAsync(async c =>
+        return await unidadDeTrabajo.EjecutarAsync(async c =>
         {
+            if (await usuarios.ObtenerPorCorreoAsync(correo, c) is not null) return ResultadoOperacion.Conflicto("CORREO_DUPLICADO");
             await usuarios.AgregarAsync(usuario, c);
             await auditoria.RegistrarAsync(Evento(TipoEventoAdministracion.UsuarioCreado, actor, perfil, usuario.Id), c);
-        }, ct);
-        return ResultadoOperacion.Exito(usuario.Id);
+            return ResultadoOperacion.Exito(usuario.Id);
+        }, "CORREO_DUPLICADO", ct);
     }
 
     public async Task<ResultadoOperacion> EditarCorreoAsync(
@@ -56,15 +56,15 @@ public sealed class ServicioUsuarios(
 
         if (!Usuario.EsCorreoValido(nuevoCorreo)) return ResultadoOperacion.Invalida("CORREO_INVALIDO");
         if (Usuario.NormalizarCorreo(nuevoCorreo) == usuario.Correo) return ResultadoOperacion.Exito(usuario.Id);
-        if (await usuarios.ObtenerPorCorreoAsync(nuevoCorreo, ct) is not null) return ResultadoOperacion.Conflicto("CORREO_DUPLICADO");
 
-        await unidadDeTrabajo.EjecutarAsync(async c =>
+        return await unidadDeTrabajo.EjecutarAsync(async c =>
         {
+            if (await usuarios.ObtenerPorCorreoAsync(nuevoCorreo, c) is not null) return ResultadoOperacion.Conflicto("CORREO_DUPLICADO");
             usuario.CambiarCorreo(nuevoCorreo);
             await usuarios.GuardarAsync(usuario, c);
             await auditoria.RegistrarAsync(Evento(TipoEventoAdministracion.UsuarioEditado, actor, perfil, usuario.Id, "campo=correo"), c);
-        }, ct);
-        return ResultadoOperacion.Exito(usuario.Id);
+            return ResultadoOperacion.Exito(usuario.Id);
+        }, "CORREO_DUPLICADO", ct);
     }
 
     /// <summary>
@@ -83,19 +83,20 @@ public sealed class ServicioUsuarios(
         if (await guardia.VerificarOrganizacionAsync(actor, perfil, usuario.OrganizacionId, usuario.Id, ct) is { } ajena) return ajena;
         if (usuario.Estado == EstadoUsuario.Inactivo) return ResultadoOperacion.Exito(usuario.Id);
 
-        // Protección contra el bloqueo: la organización no se queda sin quien administre usuarios.
-        var administradores = await roles.ListarUsuariosActivosConRolAsync(usuario.OrganizacionId, Rol.AdminFuncional, ct);
-        if (administradores.Contains(usuario.Id) && administradores.All(id => id == usuario.Id))
-            return ResultadoOperacion.Conflicto("ULTIMO_ADMINISTRADOR");
-
-        await unidadDeTrabajo.EjecutarAsync(async c =>
+        return await unidadDeTrabajo.EjecutarAsync(async c =>
         {
+            // Protección contra el bloqueo: la organización no se queda sin quien administre usuarios. Se lee dentro de la
+            // transacción para que dos desactivaciones simultáneas no dejen la organización sin administrador.
+            var administradores = await roles.ListarUsuariosActivosConRolAsync(usuario.OrganizacionId, Rol.AdminFuncional, c);
+            if (administradores.Contains(usuario.Id) && administradores.All(id => id == usuario.Id))
+                return ResultadoOperacion.Conflicto("ULTIMO_ADMINISTRADOR");
+
             usuario.Desactivar();
             await usuarios.GuardarAsync(usuario, c);
             await sesiones.CerrarTodasAsync(usuario.Id, c);
             await auditoria.RegistrarAsync(Evento(TipoEventoAdministracion.UsuarioDesactivado, actor, perfil, usuario.Id), c);
-        }, ct);
-        return ResultadoOperacion.Exito(usuario.Id);
+            return ResultadoOperacion.Exito(usuario.Id);
+        }, "USUARIO_YA_MODIFICADO", ct);
     }
 
     private EventoAdministracion Evento(TipoEventoAdministracion tipo, ActorAdministracion actor, PerfilActor perfil,

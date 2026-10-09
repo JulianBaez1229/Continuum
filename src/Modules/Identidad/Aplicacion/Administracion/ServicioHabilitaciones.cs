@@ -37,18 +37,18 @@ public sealed class ServicioHabilitaciones(
 
         if (Profesional.Validar(datos.Nombres, datos.Apellidos, datos.TipoProfesional, datos.Licencia, datos.Exequatur) is { } invalido)
             return ResultadoOperacion.Invalida(invalido);
-        if (await profesionales.ObtenerPorUsuarioAsync(usuario.Id, ct) is not null)
-            return ResultadoOperacion.Conflicto("PROFESIONAL_YA_REGISTRADO");
 
         var profesional = Profesional.Crear(usuario.Id, perfil.OrganizacionId, datos.Nombres, datos.Apellidos,
             datos.TipoProfesional, datos.Licencia, datos.Exequatur);
 
-        await unidadDeTrabajo.EjecutarAsync(async c =>
+        return await unidadDeTrabajo.EjecutarAsync(async c =>
         {
+            if (await profesionales.ObtenerPorUsuarioAsync(usuario.Id, c) is not null)
+                return ResultadoOperacion.Conflicto("PROFESIONAL_YA_REGISTRADO");
             await profesionales.AgregarAsync(profesional, c);
             await auditoria.RegistrarAsync(Evento(TipoEventoAdministracion.ProfesionalRegistrado, actor, perfil, usuario.Id, profesional.Id), c);
-        }, ct);
-        return ResultadoOperacion.Exito(profesional.Id);
+            return ResultadoOperacion.Exito(profesional.Id);
+        }, "PROFESIONAL_YA_REGISTRADO", ct);
     }
 
     public async Task<ResultadoOperacion> RegistrarHabilitacionAsync(
@@ -66,18 +66,18 @@ public sealed class ServicioHabilitaciones(
         if (await Validar(actor, perfil.OrganizacionId, procedimientosPermitidos, vigenteHasta, ct) is { } invalida) return invalida;
         if (!await catalogo.EspecialidadVigenteAsync(perfil.OrganizacionId, especialidadId, ct))
             return ResultadoOperacion.Invalida("ESPECIALIDAD_INEXISTENTE");
-        if (await habilitaciones.ObtenerAsync(profesional.Id, especialidadId, ct) is not null)
-            return ResultadoOperacion.Conflicto("HABILITACION_DUPLICADA");
 
         var habilitacion = Habilitacion.Registrar(profesional.Id, perfil.OrganizacionId, especialidadId, procedimientosPermitidos, vigenteHasta);
 
-        await unidadDeTrabajo.EjecutarAsync(async c =>
+        return await unidadDeTrabajo.EjecutarAsync(async c =>
         {
+            if (await habilitaciones.ObtenerAsync(profesional.Id, especialidadId, c) is not null)
+                return ResultadoOperacion.Conflicto("HABILITACION_DUPLICADA");
             await habilitaciones.AgregarAsync(habilitacion, c);
             await auditoria.RegistrarAsync(Evento(TipoEventoAdministracion.HabilitacionRegistrada, actor, perfil,
                 profesional.UsuarioId, habilitacion.Id, Detalle(habilitacion)), c);
-        }, ct);
-        return ResultadoOperacion.Exito(habilitacion.Id);
+            return ResultadoOperacion.Exito(habilitacion.Id);
+        }, "HABILITACION_DUPLICADA", ct);
     }
 
     /// <summary>Cambia procedimientos y vencimiento (renovación). Sobre una habilitación revocada, la reactiva.</summary>
@@ -96,12 +96,13 @@ public sealed class ServicioHabilitaciones(
 
         if (await Validar(actor, perfil.OrganizacionId, procedimientosPermitidos, vigenteHasta, ct) is { } invalida) return invalida;
 
+        var reactivada = actual.Estado == EstadoHabilitacion.Revocada;
         var nueva = actual.Actualizar(procedimientosPermitidos, vigenteHasta);
         await unidadDeTrabajo.EjecutarAsync(async c =>
         {
             await habilitaciones.GuardarAsync(nueva, c);
             await auditoria.RegistrarAsync(Evento(TipoEventoAdministracion.HabilitacionActualizada, actor, perfil,
-                profesional?.UsuarioId, nueva.Id, Detalle(nueva)), c);
+                profesional?.UsuarioId, nueva.Id, reactivada ? $"{Detalle(nueva)};reactivada=true" : Detalle(nueva)), c);
         }, ct);
         return ResultadoOperacion.Exito(nueva.Id);
     }
@@ -133,6 +134,7 @@ public sealed class ServicioHabilitaciones(
     private async Task<ResultadoOperacion?> Validar(
         ActorAdministracion actor, Guid organizacionId, IReadOnlyCollection<Guid> procedimientos, DateOnly vigenteHasta, CancellationToken ct)
     {
+        if (procedimientos is null) return ResultadoOperacion.Invalida("PROCEDIMIENTOS_INVALIDOS");
         var zona = await zonaHoraria.ObtenerAsync(actor.SedeActivaId, ct);
         var hoy = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(reloj.Ahora, zona).DateTime);
         if (vigenteHasta < hoy) return ResultadoOperacion.Invalida("VENCIMIENTO_PASADO");

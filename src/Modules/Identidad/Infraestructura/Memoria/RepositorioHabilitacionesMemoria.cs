@@ -25,7 +25,7 @@ public sealed class RepositorioHabilitacionesMemoria(AlmacenMemoria almacen) : I
     public Task AgregarAsync(Habilitacion habilitacion, CancellationToken ct = default)
     {
         if (almacen.Habilitaciones.Values.Any(h => h.ProfesionalId == habilitacion.ProfesionalId && h.EspecialidadId == habilitacion.EspecialidadId))
-            throw new InvalidOperationException("El profesional ya tiene una habilitación en esa especialidad.");
+            throw new ViolacionDeUnicidadException("El profesional ya tiene una habilitación en esa especialidad.");
         almacen.Habilitaciones[habilitacion.Id] = habilitacion;
         return Task.CompletedTask;
     }

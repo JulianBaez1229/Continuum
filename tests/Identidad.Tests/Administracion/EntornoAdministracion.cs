@@ -12,10 +12,15 @@ internal sealed class AuditoriaAdministracionFalsa : IAuditoriaAdministracion
     public List<EventoAdministracion> Eventos { get; } = [];
     public bool Falla { get; set; }
 
+    /// <summary>Si se asigna, cada evento guarda si se registró dentro de la transacción (RF-AUD-008).</summary>
+    public Func<bool>? DentroDeTransaccion { get; set; }
+    public List<(EventoAdministracion Evento, bool Dentro)> Registros { get; } = [];
+
     public Task RegistrarAsync(EventoAdministracion evento, CancellationToken ct = default)
     {
         if (Falla) throw new InvalidOperationException("Bitácora no disponible.");
         Eventos.Add(evento);
+        if (DentroDeTransaccion is { } dentro) Registros.Add((evento, dentro()));
         return Task.CompletedTask;
     }
 }
@@ -54,6 +59,27 @@ internal sealed class AvisosAdministracionFalsos : IAvisosAdministracion
     }
 }
 
+/// <summary>
+/// Envuelve una unidad de trabajo para saber si se está dentro de ella y para simular, con <see cref="AntesDelTrabajo"/>,
+/// otra transacción que confirma justo antes de que corra el trabajo (carrera entre la lectura y la escritura).
+/// </summary>
+internal sealed class UnidadDeTrabajoObservable(IUnidadDeTrabajo interna) : IUnidadDeTrabajo
+{
+    public bool Dentro { get; private set; }
+    public Action? AntesDelTrabajo { get; set; }
+
+    public async Task EjecutarAsync(Func<CancellationToken, Task> trabajo, CancellationToken ct = default)
+    {
+        AntesDelTrabajo?.Invoke();
+        await interna.EjecutarAsync(async c =>
+        {
+            Dentro = true;
+            try { await trabajo(c); }
+            finally { Dentro = false; }
+        }, ct);
+    }
+}
+
 /// <summary>República Dominicana: UTC−4 sin horario de verano (zona por defecto de la sede).</summary>
 internal sealed class ZonaHorariaFalsa : IZonaHorariaSede
 {
@@ -85,7 +111,9 @@ internal sealed class EntornoAdministracion
     public RepositorioRolesAsignadosMemoria Roles { get; }
     public RepositorioProfesionalesMemoria Profesionales { get; }
     public RepositorioHabilitacionesMemoria Habilitaciones { get; }
-    public UnidadDeTrabajoMemoria UnidadDeTrabajo { get; }
+    public UnidadDeTrabajoObservable UnidadDeTrabajo { get; }
+    public GuardiaAdministracion Guardia { get; }
+    public ServicioSesiones ServicioSesiones { get; }
     public AuditoriaAdministracionFalsa Auditoria { get; } = new();
     public AuditoriaFalsa AuditoriaIdentidad { get; } = new();
     public SedesFalsas Sedes { get; } = new();
@@ -110,7 +138,8 @@ internal sealed class EntornoAdministracion
         Roles = new(Almacen);
         Profesionales = new(Almacen);
         Habilitaciones = new(Almacen);
-        UnidadDeTrabajo = new(Almacen);
+        UnidadDeTrabajo = new(new UnidadDeTrabajoMemoria(Almacen));
+        Auditoria.DentroDeTransaccion = () => UnidadDeTrabajo.Dentro;
 
         Sedes.Agregar(Org, Sede);
         Sedes.Agregar(Org, SedeNorte);
@@ -127,8 +156,8 @@ internal sealed class EntornoAdministracion
         ConsultaHabilitaciones = new(Habilitaciones);
 
         var politicaSesion = new PoliticaSesionFalsa();
-        var sesiones = new ServicioSesiones(Sesiones, politicaSesion, Reloj, AuditoriaIdentidad);
-        var guardia = new GuardiaAdministracion(ConsultaRoles, Auditoria, Reloj);
+        var sesiones = ServicioSesiones = new ServicioSesiones(Sesiones, politicaSesion, Reloj, AuditoriaIdentidad);
+        var guardia = Guardia = new GuardiaAdministracion(ConsultaRoles, Auditoria, Reloj);
 
         ServicioUsuarios = new(guardia, Usuarios, Roles, new HasheadorFalso(), sesiones, UnidadDeTrabajo, Auditoria, Reloj);
         ServicioRoles = new(guardia, Usuarios, Roles, Sedes, UnidadDeTrabajo, Auditoria, Reloj);

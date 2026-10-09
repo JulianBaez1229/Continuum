@@ -1,12 +1,12 @@
 <!--
 BORRADOR. Según docs/GUIA-DE-ACTUALIZACION.md §2, la solicitud definitiva se copia a
 docs/cambios/SC-<nnn>-administrador-principal-y-aprobacion.md en una rama `docs/SC-<nnn>-...`, con su propio PR.
-Aquí no se edita nada de docs/. El número es provisional: docs/cambios ya tiene SC-001 (parámetros del módulo 07) y
+Aquí no se edita nada de docs/. El número es provisional (se salta SC-002 para no chocar con otros borradores de la revisión del módulo 03): docs/cambios ya tiene SC-001 (parámetros del módulo 07) y
 specs/SC-001-borrador-matriz-y-equipo-de-atencion.md también reclama SC-001.
 Origen: petición de Julian en el hilo del tramo A (2026-10-09) tras el punto abierto «quitar o desactivar al último administrador».
 -->
 ---
-id: SC-002
+id: SC-003
 titulo: "Administrador principal (SYSTEM_ADMIN) y aprobación para desactivar administradores"
 solicitante: "Julian (Dev A) — borrador asistido por Claude Code"
 fecha: 2026-10-09
@@ -15,7 +15,7 @@ estado: abierta
 prioridad: media
 ---
 
-# SC-002 — Administrador principal y aprobación para desactivar administradores
+# SC-003 — Administrador principal y aprobación para desactivar administradores
 
 ## 1. Descripción del cambio
 
@@ -23,7 +23,7 @@ Crear un rol `SYSTEM_ADMIN` (administrador principal) por organización. Los dem
 
 ## 2. Motivo
 
-El tramo A del módulo 03 permite hoy que un administrador desactive a cualquier otro, incluido el último, o a sí mismo, y deje la organización sin nadie que administre usuarios. La documentación no define ninguna protección (ver «Puntos abiertos» de `specs/2026-10-09-usuarios-roles-habilitaciones-tramo-a.md`).
+La documentación no define ninguna protección contra que una organización se quede sin administradores. Mientras esta solicitud se decide, el tramo A aplica una regla mínima (decidida por Julian el 2026-10-09): no se puede desactivar ni quitar el rol al **último** `ADMIN_FUNCIONAL` activo de la organización (`ULTIMO_ADMINISTRADOR`). Un administrador sí puede desactivar a otro mientras quede alguno activo, y la regla mínima no impide que dos administradores se desactiven entre sí en secuencia hasta quedar uno solo. Esta solicitud sustituye esa regla por un administrador principal con aprobación (ver «Puntos abiertos» de `specs/2026-10-09-usuarios-roles-habilitaciones-tramo-a.md`).
 
 ## 3. Elementos afectados
 

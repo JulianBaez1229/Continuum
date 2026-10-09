@@ -16,7 +16,7 @@ public sealed class RepositorioProfesionalesMemoria(AlmacenMemoria almacen) : IR
     public Task AgregarAsync(Profesional profesional, CancellationToken ct = default)
     {
         if (almacen.Profesionales.Values.Any(p => p.UsuarioId == profesional.UsuarioId))
-            throw new InvalidOperationException("El usuario ya tiene una ficha de profesional.");
+            throw new ViolacionDeUnicidadException("El usuario ya tiene una ficha de profesional.");
         almacen.Profesionales[profesional.Id] = profesional;
         return Task.CompletedTask;
     }
