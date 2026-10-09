@@ -41,11 +41,42 @@ internal sealed class SesionesEnMemoria : ISesiones
     public Task GuardarAsync(IEnumerable<Sesion> sesiones, CancellationToken ct = default) => Task.CompletedTask;
 }
 
+internal sealed class TokensEnMemoria : ITokensAccion
+{
+    private readonly List<TokenAccion> _tokens = [];
+    public Task AgregarAsync(TokenAccion t, CancellationToken ct = default) { _tokens.Add(t); return Task.CompletedTask; }
+    public Task<TokenAccion?> ObtenerPorHashAsync(string hash, CancellationToken ct = default) =>
+        Task.FromResult(_tokens.FirstOrDefault(t => t.HashToken == hash));
+    public Task<IReadOnlyList<TokenAccion>> ObtenerPendientesDeUsuarioAsync(Guid usuarioId, PropositoToken proposito, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<TokenAccion>>(_tokens.Where(t => t.UsuarioId == usuarioId && t.Proposito == proposito && t.UsadoEn is null).ToList());
+    public Task GuardarAsync(IEnumerable<TokenAccion> tokens, CancellationToken ct = default) => Task.CompletedTask;
+}
+
+/// <summary>Captura lo que el módulo 17 enviaría, para poder completar los flujos por correo en las pruebas.</summary>
+internal sealed class MensajeriaCaptura : IMensajeriaIdentidad
+{
+    public Dictionary<Guid, string> UltimoTokenRecuperacion { get; } = [];
+    public List<Guid> CambiosDeContrasena { get; } = [];
+    public Dictionary<Guid, string> UltimaInvitacion { get; } = [];
+    public Dictionary<Guid, string> UltimoCodigoMfa { get; } = [];
+
+    public Task EnviarEnlaceRecuperacionAsync(Usuario u, string token, DateTimeOffset expiraEn, CancellationToken ct = default)
+    { UltimoTokenRecuperacion[u.Id] = token; return Task.CompletedTask; }
+    public Task NotificarCambioContrasenaAsync(Usuario u, CancellationToken ct = default)
+    { CambiosDeContrasena.Add(u.Id); return Task.CompletedTask; }
+    public Task EnviarInvitacionPacienteAsync(Guid pacienteId, CanalInvitacion canal, string destino, string token, DateTimeOffset expiraEn, CancellationToken ct = default)
+    { UltimaInvitacion[pacienteId] = token; return Task.CompletedTask; }
+    public Task EnviarCodigoMfaAsync(Usuario u, string codigo, DateTimeOffset expiraEn, CancellationToken ct = default)
+    { UltimoCodigoMfa[u.Id] = codigo; return Task.CompletedTask; }
+}
+
 public class FabricaApi : WebApplicationFactory<Program>
 {
     internal RelojDePrueba Reloj { get; } = new();
     internal RepositorioEnMemoria Repositorio { get; } = new();
     internal SesionesEnMemoria Sesiones { get; } = new();
+    internal TokensEnMemoria Tokens { get; } = new();
+    internal MensajeriaCaptura Mensajeria { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -60,6 +91,10 @@ public class FabricaApi : WebApplicationFactory<Program>
             s.AddSingleton<IRepositorioUsuarios>(Repositorio);
             s.RemoveAll<ISesiones>();
             s.AddSingleton<ISesiones>(Sesiones);
+            s.RemoveAll<ITokensAccion>();
+            s.AddSingleton<ITokensAccion>(Tokens);
+            s.RemoveAll<IMensajeriaIdentidad>();
+            s.AddSingleton<IMensajeriaIdentidad>(Mensajeria);
         });
     }
 }

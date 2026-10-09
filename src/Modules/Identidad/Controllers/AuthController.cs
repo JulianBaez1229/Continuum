@@ -12,6 +12,8 @@ public sealed record SolicitudLogin([Required] string Correo, [Required] string 
 public sealed record SolicitudCodigo([Required] string TokenDesafio, [Required] string Codigo);
 public sealed record SolicitudDesafio([Required] string TokenDesafio);
 public sealed record SolicitudRenovacion([Required] string TokenRenovacion);
+public sealed record SolicitudRecuperacion([Required] string Correo);
+public sealed record SolicitudRestablecimiento([Required] string Token, [Required] string NuevaContrasena);
 
 public sealed record RespuestaLogin(
     string Estado, string? TokenAcceso, string? TokenDesafio, DateTimeOffset? BloqueadoHasta, string? TokenRenovacion = null);
@@ -37,7 +39,7 @@ public sealed class ConflictoConcurrenciaAttribute : ExceptionFilterAttribute
 [ApiController]
 [Route("api/auth")]
 [ConflictoConcurrencia]
-public sealed class AuthController(ServicioAutenticacion auth) : ControllerBase
+public sealed class AuthController(ServicioAutenticacion auth, ServicioRecuperacionContrasena recuperacion) : ControllerBase
 {
     private static ObjectResult Credenciales(string? codigo = null)
     {
@@ -83,6 +85,41 @@ public sealed class AuthController(ServicioAutenticacion auth) : ControllerBase
         await auth.ConfirmarConfiguracionMfaAsync(s.TokenDesafio, s.Codigo, ct) is { Exito: true } r
             ? Ok(new RespuestaConfirmacionMfa(r.CodigosRecuperacion))
             : Credenciales();
+
+    /// <summary>Responde 202 siempre, exista o no el correo, para no revelar qué cuentas existen.</summary>
+    [HttpPost("recuperacion/solicitar")]
+    [AllowAnonymous]
+    public async Task<IActionResult> SolicitarRecuperacion(SolicitudRecuperacion s, CancellationToken ct)
+    {
+        await recuperacion.SolicitarAsync(s.Correo, ct);
+        return Accepted();
+    }
+
+    [HttpPost("recuperacion/restablecer")]
+    [AllowAnonymous]
+    public async Task<IActionResult> RestablecerContrasena(SolicitudRestablecimiento s, CancellationToken ct)
+    {
+        var r = await recuperacion.RestablecerAsync(s.Token, s.NuevaContrasena, ct);
+        return r.Resultado switch
+        {
+            ResultadoRestablecimiento.Exito => NoContent(),
+            ResultadoRestablecimiento.ContrasenaInvalida => UnprocessableEntity(new ProblemDetails
+            {
+                Status = StatusCodes.Status422UnprocessableEntity,
+                Title = "Contraseña no válida",
+                Detail = r.Motivo == MotivoContrasenaInvalida.Filtrada
+                    ? "Esa contraseña es muy común; elige otra."
+                    : $"La contraseña debe tener al menos {PoliticaContrasena.LongitudMinima} caracteres.",
+                Extensions = { ["motivo"] = r.Motivo.ToString() },
+            }),
+            _ => BadRequest(new ProblemDetails
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "Enlace no válido",
+                Detail = "El enlace no es válido o ya venció. Solicita uno nuevo.",
+            }),
+        };
+    }
 
     /// <summary>Canjea el token de renovación (rotativo). Un token ya usado revoca la sesión.</summary>
     [HttpPost("renovar")]

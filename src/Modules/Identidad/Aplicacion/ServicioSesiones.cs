@@ -1,5 +1,5 @@
-using System.Security.Cryptography;
-using System.Text;
+
+
 using Continuum.Identidad.Dominio;
 
 namespace Continuum.Identidad.Aplicacion;
@@ -96,11 +96,7 @@ public sealed class ServicioSesiones(
     private EstadoSesion EstadoDe(Sesion s, DateTimeOffset ahora) =>
         s.EstadoEn(ahora, politica.Inactividad(s.OrganizacionId, s.EsPersonal), politica.DuracionMaxima(s.OrganizacionId, s.EsPersonal));
 
-    private static string NuevoToken() => Base64Url(RandomNumberGenerator.GetBytes(32));
+    public static string HashDe(string token) => GeneradorTokens.HashDe(token);
 
-    /// <summary>SHA-256: basta porque el token tiene 256 bits de entropía (no es una contraseña elegida por una persona).</summary>
-    public static string HashDe(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
-
-    private static string Base64Url(byte[] datos) =>
-        Convert.ToBase64String(datos).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    private static string NuevoToken() => GeneradorTokens.Nuevo();
 }

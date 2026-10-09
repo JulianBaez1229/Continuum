@@ -17,6 +17,7 @@ public sealed class IdentidadDbContext(DbContextOptions<IdentidadDbContext> opci
 
     public DbSet<Usuario> Usuarios => Set<Usuario>();
     public DbSet<Sesion> Sesiones => Set<Sesion>();
+    public DbSet<TokenAccion> TokensAccion => Set<TokenAccion>();
 
     protected override void OnModelCreating(ModelBuilder modelo)
     {
@@ -70,6 +71,26 @@ public sealed class IdentidadDbContext(DbContextOptions<IdentidadDbContext> opci
             s.HasIndex(x => x.HashRenovacion).IsUnique();
             s.HasIndex(x => x.HashRenovacionAnterior);
             s.HasIndex(x => x.UsuarioId);
+        });
+
+        modelo.Entity<TokenAccion>(t =>
+        {
+            t.ToTable("token_accion");
+            t.HasKey(x => x.Id);
+            t.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            t.Property(x => x.Proposito).HasColumnName("proposito").HasConversion<string>().HasMaxLength(40);
+            t.Property(x => x.UsuarioId).HasColumnName("usuario_id");
+            t.Property(x => x.PacienteId).HasColumnName("paciente_id");
+            t.Property(x => x.OrganizacionId).HasColumnName("organizacion_id");
+            t.Property(x => x.HashToken).HasColumnName("hash_token").HasMaxLength(64).IsRequired();
+            t.Property(x => x.CreadoEn).HasColumnName("creado_en");
+            t.Property(x => x.ExpiraEn).HasColumnName("expira_en");
+            t.Property(x => x.UsadoEn).HasColumnName("usado_en");
+            t.Property(x => x.Intentos).HasColumnName("intentos");
+            t.Property<Guid>(ColumnaVersion).HasColumnName(ColumnaVersion).IsConcurrencyToken();
+            t.HasIndex(x => x.HashToken).IsUnique();
+            t.HasIndex(x => new { x.UsuarioId, x.Proposito });
+            t.HasIndex(x => x.PacienteId);
         });
     }
 
