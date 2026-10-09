@@ -566,4 +566,105 @@ public class AutorizadorTests
             await e.Autorizar(Accion.Leer, TipoRecurso.DatosDemograficos, Ctx(paciente: OtroPaciente)));
         Assert.Equal(1, e.Auditoria.Llamadas);
     }
+
+    #region Matriz mínima de endpoints clínicos
+
+    // Las seis filas de la matriz mínima de CLAUDE.md para un endpoint clínico (aquí, NotaClinica x Leer) a través del
+    // Autorizador completo (spec §11). La séptima, «sin sesión → 401», es del adaptador HTTP y queda fuera de este tramo.
+    // Cada prueba compara la Decision entera y, si deniega, comprueba además el evento de auditoría (CA-AUD-003).
+
+    private static RelacionClinica RelacionDe(TipoRelacion tipo, bool permiteSensible = false, bool episodioSensible = false) =>
+        new(tipo, permiteSensible, episodioSensible, Especialidad);
+
+    /// <summary>Lectura de una nota del <see cref="OtroPaciente"/> en el <see cref="Episodio"/> (de la organización <see cref="Org"/> salvo que se indique).</summary>
+    private static Task<Decision> LeerNota(Escenario e, Guid? org = null) =>
+        e.Autorizar(Accion.Leer, TipoRecurso.NotaClinica, Ctx(org: org, paciente: OtroPaciente, episodio: Episodio, recurso: RecursoNota));
+
+    /// <summary>Una denegación deja exactamente un evento, con el tipo y el motivo de la decisión.</summary>
+    private static void AssertUnEventoDeDenegacion(Escenario e, TipoDenegacion tipo, MotivoDenegacion motivo)
+    {
+        var evento = Assert.Single(e.Auditoria.Eventos);
+        Assert.Equal(tipo, evento.Tipo);
+        Assert.Equal(motivo, evento.Motivo);
+    }
+
+    [Fact]
+    public async Task RN_001_tratante_lee_la_nota_completa()
+    {
+        var e = new Escenario([Rol.Profesional], ProfesionalActor);
+        e.Relacion.Relacion = RelacionDe(TipoRelacion.Tratante);
+
+        var decision = await LeerNota(e);
+
+        Assert.Equal(Decision.Permitir(NivelAcceso.Completo), decision);
+        Assert.Empty(e.Auditoria.Eventos);
+    }
+
+    [Fact]
+    public async Task RN_001_equipo_en_episodio_no_sensible_lee_la_nota_completa()
+    {
+        // El permiso sensible del miembro del equipo no interviene si el episodio no es sensible.
+        var e = new Escenario([Rol.Profesional], ProfesionalActor);
+        e.Relacion.Relacion = RelacionDe(TipoRelacion.Equipo, permiteSensible: false, episodioSensible: false);
+
+        var decision = await LeerNota(e);
+
+        Assert.Equal(Decision.Permitir(NivelAcceso.Completo), decision);
+        Assert.Empty(e.Auditoria.Eventos);
+    }
+
+    [Fact]
+    public async Task RN_016_equipo_sin_permiso_en_episodio_sensible_lee_el_resumen()
+    {
+        // Es una concesión reducida, no una denegación: el acceso es Resumen y no se audita como denegado.
+        var e = new Escenario([Rol.Profesional], ProfesionalActor);
+        e.Relacion.Relacion = RelacionDe(TipoRelacion.Equipo, permiteSensible: false, episodioSensible: true);
+
+        var decision = await LeerNota(e);
+
+        Assert.Equal(Decision.Permitir(NivelAcceso.Resumen), decision);
+        Assert.Empty(e.Auditoria.Eventos);
+    }
+
+    [Fact]
+    public async Task RN_001_profesional_ajeno_se_deniega_con_sin_relacion_clinica()
+    {
+        // Un profesional de la organización, con ficha, pero sin relación con el paciente.
+        var e = new Escenario([Rol.Profesional], ProfesionalActor);
+        e.Relacion.Relacion = RelacionDe(TipoRelacion.Ninguna);
+
+        var decision = await LeerNota(e);
+
+        Assert.Equal(Prohibido(MotivoDenegacion.SinRelacionClinica), decision);
+        Assert.Equal(1, e.Relacion.Llamadas);
+        AssertUnEventoDeDenegacion(e, TipoDenegacion.Prohibido, MotivoDenegacion.SinRelacionClinica);
+    }
+
+    [Fact]
+    public async Task RN_002_recepcion_se_deniega_con_sin_permiso_de_rol()
+    {
+        var e = new Escenario([Rol.Recepcion]);
+
+        var decision = await LeerNota(e);
+
+        Assert.Equal(Prohibido(MotivoDenegacion.SinPermisoDeRol), decision);
+        AssertSinCargarHechos(e);
+        AssertUnEventoDeDenegacion(e, TipoDenegacion.Prohibido, MotivoDenegacion.SinPermisoDeRol);
+    }
+
+    [Fact]
+    public async Task RN_015_otra_organizacion_responde_no_encontrado()
+    {
+        // Con una relación de tratante cargable, solo la organización distinta impide el acceso: un 404, no un 403.
+        var e = new Escenario([Rol.Profesional], ProfesionalActor);
+        e.Relacion.Relacion = RelacionDe(TipoRelacion.Tratante);
+
+        var decision = await LeerNota(e, org: OtraOrg);
+
+        Assert.Equal(Decision.Denegar(TipoDenegacion.NoEncontrado, MotivoDenegacion.OtraOrganizacion), decision);
+        AssertSinCargarHechos(e);
+        AssertUnEventoDeDenegacion(e, TipoDenegacion.NoEncontrado, MotivoDenegacion.OtraOrganizacion);
+    }
+
+    #endregion
 }
