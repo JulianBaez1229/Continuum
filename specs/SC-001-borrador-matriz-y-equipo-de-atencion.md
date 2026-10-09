@@ -28,12 +28,13 @@ Al diseñar la política de autorización se encontraron contradicciones y vací
 
 | Tipo | ID | Archivo | Acción |
 |---|---|---|---|
-| Modelo de datos | `miembro_equipo` | `modulos/05-modelo-de-datos.md` §3.4 | Modificar: agregar `permite_sensible` |
+| Modelo de datos | `miembro_equipo` | `modulos/05-modelo-de-datos.md` §3.4 | Modificar: agregar `permite_sensible`; aclarar que `profesional_id` referencia a `profesional` también cuando el miembro es un asistente clínico (4.1) |
 | Requisito | `RF-ROL-006` | `modulos/03-actores-roles-y-permisos.md` §5 | Modificar: el tratante marca el permiso al agregar al miembro |
 | Requisito | `RF-HCE-017` | `modulos/12-historia-clinica-electronica.md` §4 | Agregar: visibilidad por sección para el asistente |
 | Decisión | `ADR-006` | (propuesta) | Modificar: el esquema de plantilla incluye `visible_asistente` por sección |
 | Criterios | `CA-ROL-005`, `CA-ROL-006`, `CA-ROL-007` | `modulos/03-actores-roles-y-permisos.md` §6 | Agregar |
 | Matriz | §3 y §4 | `modulos/03-actores-roles-y-permisos.md` | Modificar: aclaraciones de la sección 4 de esta solicitud |
+| Matriz (fila) | «Categorías sensibles» | `modulos/03-actores-roles-y-permisos.md` §4 | Modificar: **Antes:** «Categorías sensibles — Profesional: L (T + permiso específico)»; **Después:** el miembro del equipo sin permiso explícito lee el resumen y los demás profesionales nada (4.3.2). Sujeto a la decisión de producto/legal pendiente |
 | Criterio | `CA-HCE-003` | `modulos/12-historia-clinica-electronica.md` §5 | Modificar: «cualquier profesional con relación clínica con el paciente» |
 
 ## 4. Texto propuesto
@@ -44,6 +45,8 @@ Al diseñar la política de autorización se encontraron contradicciones y vací
 
 **Después:** `miembro_equipo` — episodio_id, profesional_id, desde, hasta, **permite_sensible** (bool, por defecto `false`; lo fija el tratante, `RN-016`)
 
+**Aclaración — ficha de profesional del asistente clínico:** `miembro_equipo.profesional_id` referencia a `profesional` (módulo 05) para **todo** miembro del equipo, también para un asistente clínico. Un usuario con el rol `ASISTENTE_CLINICO` **debe tener una ficha en `profesional`** para tener cualquier acceso que exija relación clínica `[T]`; sin ficha, la política le deniega todo acceso clínico (`SIN_RELACION_CLINICA`) sin consultar al equipo. Es un requisito para el tramo A (alta de usuarios y roles: crear la ficha junto con el rol) y para `HistoriaClinica` (quien implementa `IRelacionClinica` resuelve por `profesional_id`).
+
 ### 4.2 Módulo 03 — `RF-ROL-006`
 
 **Antes:** El sistema deberá permitir al profesional tratante agregar o retirar miembros del equipo de atención de un episodio, con registro en la bitácora.
@@ -52,14 +55,29 @@ Al diseñar la política de autorización se encontraron contradicciones y vací
 
 ### 4.3 Módulo 03 — aclaraciones a la matriz (§4)
 
-1. **Asistente clínico, «L parcial (T)»:** lee y registra signos vitales y triaje; lee el resumen de seguridad (alergias y medicamentos activos) y las órdenes; lee las secciones de la nota de la especialidad del episodio que la plantilla marque como visibles al asistente; **no lee diagnósticos**; **no accede a episodios sensibles**.
-2. **Categorías sensibles:** el miembro del equipo sin permiso explícito ve el resumen (diagnóstico y plan) y no puede crear notas ni leer órdenes del episodio. El tratante y el miembro con permiso ven todo.
+1. **Asistente clínico, «L parcial (T)»:** lee y registra signos vitales y triaje; lee el resumen de seguridad (alergias y medicamentos activos) y las órdenes; lee las secciones de la nota de la especialidad del episodio que la plantilla marque como visibles al asistente; **no lee diagnósticos**; **no accede a episodios sensibles**. Todo acceso `[T]` del asistente exige que tenga ficha en `profesional` (4.1); sin ella se le deniega todo acceso clínico (`SIN_RELACION_CLINICA`).
+2. **Categorías sensibles:**
+
+   **Antes** (fila literal del módulo 03 §4): «Categorías sensibles — Profesional: L (T + permiso específico)»; todos los demás roles: «—».
+
+   **Después:** el miembro del equipo **sin** permiso explícito lee el `Resumen` (= «diagnóstico y plan») de la nota y no puede crear notas ni leer órdenes ni signos vitales del episodio. El tratante y el miembro con permiso ven todo. El asistente clínico y los profesionales sin relación clínica no ven nada.
+
+   **Qué cambia respecto al «Antes»:** la fila actual solo distingue entre quien tiene `T` + permiso específico (lee) y quien no (nada). SC-001 añade un nivel intermedio: el miembro del equipo sin permiso explícito lee el `Resumen` de la nota; los demás profesionales siguen sin ver nada.
+
+   > **Decisión de producto/legal pendiente.** El `Resumen` incluye el **diagnóstico**, que en salud mental o VIH es precisamente el dato que `RN-016` protege («solo el tratante y quienes él autorice ven el detalle»). Antes de que la política sirva endpoints reales, el equipo debe confirmar, con asesoría legal (módulo 24), **qué contiene el resumen visible** para el miembro del equipo sin permiso; el módulo 12 define la composición del resumen. Si se decide que el diagnóstico no debe mostrarse en episodios sensibles, el nivel `Resumen` se vacía o se elimina, y esta aclaración y `CA-ROL-005` (4.6) cambian con él. La política solo devuelve el nivel `Resumen`; los campos que lo componen los decide `HistoriaClinica`.
+
+   > **Nota I8.** `ResumenSeguridad` (alergias y medicamentos activos) **no se filtra por sensibilidad**: se lee a nivel paciente con relación clínica, también en episodios sensibles. Los medicamentos activos de un episodio sensible podrían revelar el diagnóstico; es una decisión de composición del resumen en el módulo 12. Para revisar.
+
 3. **Recursos adicionales** (provienen de los módulos 12 y 14): resumen de seguridad, signos vitales y triaje, asignación de formularios.
-4. **Reportes por alcance:** propios (profesional), operativos (recepción), sede (coordinador), todos (dirección), cumplimiento (auditor); la dirección y el administrador los ven todos salvo los propios.
+4. **Reportes por alcance:** propios (profesional), operativos (recepción), sede (coordinador), todos (dirección), cumplimiento (auditor); la dirección y el administrador los ven todos salvo los propios. El `CoordinadorSede` lee los reportes de alcance `Operativo` y `Sede` **solo de su sede** (`[S]`, `RN-002`: «la sede asignada»); la dirección (agregado) y el administrador los leen a nivel organización.
+
+   > **Pregunta abierta para el equipo y Dev B (módulo 21, `RF-REP-004`).** `Recepción × Reporte(Operativo)` está concedido **sin** `[S]`, es decir, a nivel organización, tal como lo aprobó la spec §7. Pero `RN-002` habla de «la sede asignada» y el coordinador de sede (rol superior a recepción) sí lleva `[S]` en ese mismo reporte. Hay que decidir si Recepción debe llevar `[S]`: es un cambio de una línea en la matriz (`MatrizPermisos`) y en su prueba (`MatrizPermisosTests`). Mientras no se decida, queda como está.
+
 5. **`RED_APOYO`:** sin acceso en el MVP hasta que el módulo 19 (Fase 3) y el módulo 08 (tutores de menores) definan su alcance.
 6. **Paciente y citas:** «solicitar» es Fase 2 (autoagendamiento); confirmar y cancelar desde el portal (módulo 16, MVP) requieren definir si son `Actualizar (P)` acotado.
 7. **`NotaClinica`:** borrador, firma y adendas son `Crear` (`RN-006`).
 8. **Sede:** los roles operativos solo actúan sobre recursos de su sede activa (`RN-002`); los datos clínicos y demográficos son de nivel organización.
+9. **Episodio obligatorio:** el `EpisodioId` es obligatorio para **todo** rol en `NotaClinica`, `Orden` y `SignosVitalesTriaje` (incluido el paciente que lee una orden liberada). Sin él, la política deniega con `DATOS_INSUFICIENTES` (spec §5 y §10); el módulo consumidor debe enviar el episodio del recurso que ya cargó.
 
 ### 4.4 Módulo 12 — nuevo requisito y criterio
 
@@ -86,10 +104,10 @@ Al diseñar la política de autorización se encontraron contradicciones y vací
 - Módulos afectados: 03, 05, 12, 21 (alcance de reportes), 08 y 16 (tutores y portal), ADR-006.
 - ¿Cambia el alcance del MVP? **No.**
 - ¿Cambia el modelo de datos? **Sí** (`miembro_equipo.permite_sensible`; migración de Dev B, contrato protegido).
-- ¿Cambia una regla de negocio? **No** (concreta `RN-001`, `RN-002` y `RN-016`; no las altera).
+- ¿Cambia una regla de negocio? **No** (concreta `RN-001`, `RN-002` y `RN-016`; no las altera), salvo que la decisión pendiente (b) de 4.3.2 obligue a revisar `RN-016`.
 - ¿Requiere nuevos criterios de aceptación? **Sí** (`CA-ROL-005` a `007`, `CA-HCE-006`).
 - Esfuerzo estimado: 0,5 día de documentación + 0,25 día de migración.
-- Puntos que decide el equipo: I4 (alergias visibles solo con relación clínica), I5 (asistente sin triaje en episodios sensibles), I7 (alcance de reportes de la dirección, con Dev B) e I8 (resumen de seguridad y episodios sensibles).
+- Puntos que decide el equipo: I4 (alergias visibles solo con relación clínica), I5 (asistente sin triaje en episodios sensibles), I7 (alcance de reportes de la dirección, con Dev B), I8 (resumen de seguridad y episodios sensibles), **(a)** si `Recepción × Reporte(Operativo)` lleva `[S]` (con Dev B, 4.3.4) y **(b)** qué contiene el `Resumen` visible para el miembro del equipo sin permiso en episodios sensibles (decisión de producto y asesoría legal, módulo 24, 4.3.2); la política no debe servir endpoints reales hasta resolver (b).
 
 ## 6. Decisión
 
