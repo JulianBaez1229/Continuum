@@ -78,10 +78,7 @@ public sealed class ServicioMfa(
             return new(EstadoInicioSesion.CuentaBloqueada, BloqueadoHasta: usuario.BloqueadoHasta);
         }
 
-        var limpio = (codigo ?? "").Replace(" ", "").Replace("-", "").ToUpperInvariant();
-        var valido = limpio.Length == Totp.Digitos
-            ? VerificarTotp(usuario, limpio, ahora)
-            : await VerificarRecuperacionAsync(usuario, limpio, ahora, ct);
+        var valido = await ComprobarCodigoAsync(usuario, codigo, ct);
 
         if (!valido)
         {
@@ -94,6 +91,21 @@ public sealed class ServicioMfa(
         await auditoria.RegistrarAsync(new(TipoEventoIdentidad.InicioSesionExitoso, ahora,
             usuario.Id, usuario.OrganizacionId), ct);
         return new(EstadoInicioSesion.Exitoso, usuario.Id);
+    }
+
+    /// <summary>
+    /// Comprueba un código TOTP o de recuperación sin cerrar ningún inicio de sesión (lo usa la reautenticación).
+    /// Si es válido marca el paso TOTP o consume el código de recuperación: <b>quien llama debe guardar al usuario</b>.
+    /// </summary>
+    public async Task<bool> ComprobarCodigoAsync(Usuario usuario, string? codigo, CancellationToken ct = default)
+    {
+        if (!usuario.MfaHabilitado || usuario.SecretoTotpProtegido is null) return false;
+
+        var ahora = reloj.Ahora;
+        var limpio = (codigo ?? "").Replace(" ", "").Replace("-", "").ToUpperInvariant();
+        return limpio.Length == Totp.Digitos
+            ? VerificarTotp(usuario, limpio, ahora)
+            : await VerificarRecuperacionAsync(usuario, limpio, ahora, ct);
     }
 
     private bool VerificarTotp(Usuario usuario, string codigo, DateTimeOffset ahora)

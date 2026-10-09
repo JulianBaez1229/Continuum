@@ -70,6 +70,19 @@ public class EmisorTokensJwtTests
     public void RF_IAM_006_texto_que_no_es_un_token_se_rechaza(string token) =>
         Assert.Null(Emisor().ValidarDesafio(token, PropositoDesafio.SegundoFactor));
 
+
+    [Fact]
+    public void RF_IAM_010_el_acceso_reautenticado_lleva_la_marca_y_el_normal_no()
+    {
+        var emisor = Emisor();
+        var manejador = new JsonWebTokenHandler();
+
+        var normal = manejador.ReadJsonWebToken(emisor.EmitirAcceso(_usuario, _sesionId));
+        Assert.False(normal.TryGetClaim("rea", out _));
+
+        var reautenticado = manejador.ReadJsonWebToken(emisor.EmitirAcceso(_usuario, _sesionId, _reloj.Ahora));
+        Assert.Equal(_reloj.Ahora.ToUnixTimeSeconds(), reautenticado.GetClaim("rea").Value is { } v ? long.Parse(v) : 0);
+    }
     [Fact]
     public void RF_IAM_006_una_clave_corta_impide_arrancar()
     {

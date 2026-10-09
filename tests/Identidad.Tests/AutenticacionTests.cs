@@ -5,7 +5,8 @@ namespace Continuum.Identidad.Tests;
 
 internal sealed class EmisorFalso : IEmisorTokens
 {
-    public string EmitirAcceso(Usuario usuario, Guid sesionId) => $"acceso:{usuario.Id}:{sesionId}";
+    public string EmitirAcceso(Usuario usuario, Guid sesionId, DateTimeOffset? reautenticadoEn = null) =>
+        $"acceso:{usuario.Id}:{sesionId}" + (reautenticadoEn is { } r ? $":rea={r.ToUnixTimeSeconds()}" : "");
     public string EmitirDesafio(Guid usuarioId, PropositoDesafio proposito) => $"desafio:{proposito}:{usuarioId}";
     public Guid? ValidarDesafio(string token, PropositoDesafio proposito)
     {

@@ -4,6 +4,7 @@ using Continuum.Identidad.Infraestructura.Persistencia;
 using Continuum.Identidad.Infraestructura.Seguridad;
 using Continuum.Identidad.Infraestructura.Tokens;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -75,9 +76,18 @@ public static class ModuloIdentidad
         servicios.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
             .Configure<IReloj>((o, reloj) => o.TokenValidationParameters.LifetimeValidator =
                 (desde, hasta, _, _) => EmisorTokensJwt.VigenteEn(desde, hasta, reloj.Ahora));
-        servicios.AddAuthorization(o => o.AddPolicy(PoliticasIdentidad.InvitarPacientes, p => p
-            .RequireAuthenticatedUser()
-            .RequireClaim(PoliticasIdentidad.ClavePermiso, PoliticasIdentidad.PermisoInvitarPacientes)));
+        servicios.AddAuthorization(o =>
+        {
+            o.AddPolicy(PoliticasIdentidad.InvitarPacientes, p => p
+                .RequireAuthenticatedUser()
+                .RequireClaim(PoliticasIdentidad.ClavePermiso, PoliticasIdentidad.PermisoInvitarPacientes));
+            o.AddPolicy(PoliticasIdentidad.ReautenticacionReciente, p => p
+                .RequireAuthenticatedUser()
+                .AddRequirements(new ReautenticacionRecienteRequirement()));
+        });
+        servicios.AddSingleton<IAuthorizationHandler, ReautenticacionRecienteHandler>();
+        servicios.AddSingleton<IAuthorizationMiddlewareResultHandler, ResultadoAutorizacionIdentidad>();
+        servicios.AddScoped<ServicioReautenticacion>();
 
         servicios.AddControllers().AddApplicationPart(typeof(AuthController).Assembly);
         return servicios;

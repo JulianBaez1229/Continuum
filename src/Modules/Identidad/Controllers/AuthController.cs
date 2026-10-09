@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Continuum.Identidad.Aplicacion;
+using Continuum.Identidad.Infraestructura.Seguridad;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -12,6 +13,8 @@ public sealed record SolicitudLogin([Required] string Correo, [Required] string 
 public sealed record SolicitudCodigo([Required] string TokenDesafio, [Required] string Codigo);
 public sealed record SolicitudDesafio([Required] string TokenDesafio);
 public sealed record SolicitudRenovacion([Required] string TokenRenovacion);
+public sealed record SolicitudReautenticacion([Required] string Contrasena, string? Codigo);
+public sealed record RespuestaReautenticacionDto(string TokenAcceso);
 public sealed record SolicitudRecuperacion([Required] string Correo);
 public sealed record SolicitudRestablecimiento([Required] string Token, [Required] string NuevaContrasena);
 
@@ -39,7 +42,8 @@ public sealed class ConflictoConcurrenciaAttribute : ExceptionFilterAttribute
 [ApiController]
 [Route("api/auth")]
 [ConflictoConcurrencia]
-public sealed class AuthController(ServicioAutenticacion auth, ServicioRecuperacionContrasena recuperacion) : ControllerBase
+public sealed class AuthController(
+    ServicioAutenticacion auth, ServicioRecuperacionContrasena recuperacion, ServicioReautenticacion reautenticacion) : ControllerBase
 {
     private static ObjectResult Credenciales(string? codigo = null)
     {
@@ -47,7 +51,12 @@ public sealed class AuthController(ServicioAutenticacion auth, ServicioRecuperac
         {
             Status = StatusCodes.Status401Unauthorized,
             Title = "No autenticado",
-            Detail = codigo is null ? "Credenciales inválidas." : "La sesión expiró; inicia sesión de nuevo.",
+            Detail = codigo switch
+            {
+                null => "Credenciales inválidas.",
+                "reautenticacion_invalida" => "Contraseña o código incorrectos.",
+                _ => "La sesión expiró; inicia sesión de nuevo.",
+            },
         };
         if (codigo is not null) problema.Extensions["codigo"] = codigo;
         return new ObjectResult(problema) { StatusCode = StatusCodes.Status401Unauthorized };
@@ -145,6 +154,33 @@ public sealed class AuthController(ServicioAutenticacion auth, ServicioRecuperac
             await auth.CerrarTodasLasSesionesAsync(usuarioId, ct);
         return NoContent();
     }
+
+    /// <summary>
+    /// Confirma contraseña y segundo factor antes de una acción crítica (RF-IAM-010). Devuelve un acceso nuevo, de la
+    /// misma sesión, con la marca de reautenticación. El cliente debe usar ese acceso en la acción crítica.
+    /// </summary>
+    [HttpPost("reautenticar")]
+    [Authorize]
+    public async Task<IActionResult> Reautenticar(SolicitudReautenticacion s, CancellationToken ct)
+    {
+        if (!Guid.TryParse(User.FindFirst("sub")?.Value, out var usuarioId)
+            || !Guid.TryParse(User.FindFirst("sid")?.Value, out var sesionId))
+            return Forbid();
+
+        var r = await reautenticacion.ReautenticarAsync(usuarioId, sesionId, s.Contrasena, s.Codigo, ct);
+        return r.Estado switch
+        {
+            EstadoInicioSesion.Exitoso => Ok(new RespuestaReautenticacionDto(r.TokenAcceso!)),
+            EstadoInicioSesion.CuentaBloqueada => StatusCode(StatusCodes.Status423Locked,
+                new RespuestaLogin(r.Estado.ToString(), null, null, r.BloqueadoHasta)),
+            _ => Credenciales("reautenticacion_invalida"),
+        };
+    }
+
+    /// <summary>Permite al cliente saber si la reautenticación sigue vigente antes de mostrar una acción crítica.</summary>
+    [HttpGet("reautenticacion/estado")]
+    [Authorize(Policy = PoliticasIdentidad.ReautenticacionReciente)]
+    public IActionResult EstadoReautenticacion() => NoContent();
 
     /// <summary>Identidad del token de acceso vigente. Sirve de comprobación y de base para el middleware de tenant.</summary>
     [HttpGet("yo")]

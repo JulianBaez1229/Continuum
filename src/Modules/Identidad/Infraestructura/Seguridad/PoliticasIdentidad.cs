@@ -9,4 +9,10 @@ public static class PoliticasIdentidad
     public const string ClavePermiso = "permiso";
     public const string InvitarPacientes = "identidad.invitar-pacientes";
     public const string PermisoInvitarPacientes = "pacientes.invitar";
+
+    /// <summary>
+    /// Para acciones críticas (firmar una nota, acceso de emergencia, exportar datos clínicos, cambiar roles; RF-IAM-010).
+    /// Los módulos 12, 13 y 03 la aplican con <c>[Authorize(Policy = PoliticasIdentidad.ReautenticacionReciente)]</c>.
+    /// </summary>
+    public const string ReautenticacionReciente = "identidad.reautenticacion-reciente";
 }

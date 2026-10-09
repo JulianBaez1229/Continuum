@@ -35,6 +35,8 @@ public sealed class EmisorTokensJwt : IEmisorTokens
     private const string ClaveOrganizacion = "org";
     private const string ClaveProposito = "prp";
     public const string ClaveSesion = "sid";
+    /// <summary>Segundos Unix de la última reautenticación (contraseña + MFA), RF-IAM-010.</summary>
+    public const string ClaveReautenticacion = "rea";
     private readonly OpcionesJwt _opciones;
     private readonly IReloj _reloj;
     private readonly JsonWebTokenHandler _manejador = new();
@@ -46,14 +48,17 @@ public sealed class EmisorTokensJwt : IEmisorTokens
         _reloj = reloj;
     }
 
-    public string EmitirAcceso(Usuario usuario, Guid sesionId) => Emitir(
-        _opciones.AudienciaAcceso, TimeSpan.FromMinutes(_opciones.MinutosAcceso),
-        new Dictionary<string, object>
+    public string EmitirAcceso(Usuario usuario, Guid sesionId, DateTimeOffset? reautenticadoEn = null)
+    {
+        var claims = new Dictionary<string, object>
         {
             [JwtRegisteredClaimNames.Sub] = usuario.Id.ToString(),
             [ClaveOrganizacion] = usuario.OrganizacionId.ToString(),
             [ClaveSesion] = sesionId.ToString(),
-        });
+        };
+        if (reautenticadoEn is { } rea) claims[ClaveReautenticacion] = rea.ToUnixTimeSeconds();
+        return Emitir(_opciones.AudienciaAcceso, TimeSpan.FromMinutes(_opciones.MinutosAcceso), claims);
+    }
 
     public string EmitirDesafio(Guid usuarioId, PropositoDesafio proposito) => Emitir(
         _opciones.AudienciaDesafio, TimeSpan.FromMinutes(_opciones.MinutosDesafio),
