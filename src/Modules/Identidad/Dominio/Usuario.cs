@@ -15,12 +15,15 @@ public sealed class Usuario
 
     private readonly List<DateTimeOffset> _fallosRecientes = [];
 
-    private Usuario(Guid id, Guid organizacionId, string correo, string hashContrasena)
+    private readonly List<string> _codigosRecuperacionHash = [];
+
+    private Usuario(Guid id, Guid organizacionId, string correo, string hashContrasena, bool requiereMfa)
     {
         Id = id;
         OrganizacionId = organizacionId;
         Correo = correo;
         HashContrasena = hashContrasena;
+        RequiereMfa = requiereMfa;
     }
 
     public Guid Id { get; }
@@ -34,8 +37,17 @@ public sealed class Usuario
 
     public static string NormalizarCorreo(string correo) => correo.Trim().ToLowerInvariant();
 
-    public static Usuario Crear(Guid organizacionId, string correo, string hashContrasena) =>
-        new(Guid.NewGuid(), organizacionId, NormalizarCorreo(correo), hashContrasena);
+    /// <summary>RF-IAM-002: obligatorio para todos los roles salvo PACIENTE y RED_APOYO.</summary>
+    public bool RequiereMfa { get; }
+    public bool MfaHabilitado { get; private set; }
+    public string? SecretoTotpProtegido { get; private set; }
+    public string? SecretoTotpPendienteProtegido { get; private set; }
+    public long? UltimoPasoTotp { get; private set; }
+    public IReadOnlyList<string> CodigosRecuperacionHash => _codigosRecuperacionHash;
+
+    /// <param name="requiereMfa">Seguro por defecto: solo pacientes y red de apoyo se crean con false.</param>
+    public static Usuario Crear(Guid organizacionId, string correo, string hashContrasena, bool requiereMfa = true) =>
+        new(Guid.NewGuid(), organizacionId, NormalizarCorreo(correo), hashContrasena, requiereMfa);
 
     public void Desactivar() => Estado = EstadoUsuario.Inactivo;
 
@@ -59,6 +71,30 @@ public sealed class Usuario
         return true;
     }
 
+    /// <summary>Guarda un secreto pendiente de confirmar. Falla si el MFA ya está activo (no se puede sustituir).</summary>
+    public bool PrepararMfa(string secretoProtegido)
+    {
+        if (MfaHabilitado) return false;
+        SecretoTotpPendienteProtegido = secretoProtegido;
+        return true;
+    }
+
+    public void ActivarMfa(long pasoConfirmado, IEnumerable<string> codigosRecuperacionHash)
+    {
+        if (SecretoTotpPendienteProtegido is null) throw new InvalidOperationException("No hay una configuración de MFA pendiente.");
+        SecretoTotpProtegido = SecretoTotpPendienteProtegido;
+        SecretoTotpPendienteProtegido = null;
+        MfaHabilitado = true;
+        UltimoPasoTotp = pasoConfirmado;
+        _codigosRecuperacionHash.Clear();
+        _codigosRecuperacionHash.AddRange(codigosRecuperacionHash);
+    }
+
+    public void RegistrarPasoTotp(long paso) => UltimoPasoTotp = paso;
+
+    public void ConsumirCodigoRecuperacion(string hash) => _codigosRecuperacionHash.Remove(hash);
+
+    /// <summary>Cierra el inicio de sesión: solo tras superar todos los factores exigidos.</summary>
     public void RegistrarExito(DateTimeOffset ahora)
     {
         _fallosRecientes.Clear();
