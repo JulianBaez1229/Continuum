@@ -25,6 +25,7 @@ internal sealed class RepositorioEnMemoria : IRepositorioUsuarios
         Task.FromResult(_usuarios.FirstOrDefault(u => u.Correo == Usuario.NormalizarCorreo(correo)));
     public Task<Usuario?> ObtenerPorIdAsync(Guid id, CancellationToken ct = default) =>
         Task.FromResult(_usuarios.FirstOrDefault(u => u.Id == id));
+    public Task AgregarAsync(Usuario usuario, CancellationToken ct = default) { _usuarios.Add(usuario); return Task.CompletedTask; }
     public Task GuardarAsync(Usuario usuario, CancellationToken ct = default) => Task.CompletedTask;
 }
 
@@ -47,6 +48,8 @@ internal sealed class TokensEnMemoria : ITokensAccion
     public Task AgregarAsync(TokenAccion t, CancellationToken ct = default) { _tokens.Add(t); return Task.CompletedTask; }
     public Task<TokenAccion?> ObtenerPorHashAsync(string hash, CancellationToken ct = default) =>
         Task.FromResult(_tokens.FirstOrDefault(t => t.HashToken == hash));
+    public Task<IReadOnlyList<TokenAccion>> ObtenerPendientesDePacienteAsync(Guid pacienteId, PropositoToken proposito, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<TokenAccion>>(_tokens.Where(t => t.PacienteId == pacienteId && t.Proposito == proposito && t.UsadoEn is null).ToList());
     public Task<IReadOnlyList<TokenAccion>> ObtenerPendientesDeUsuarioAsync(Guid usuarioId, PropositoToken proposito, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<TokenAccion>>(_tokens.Where(t => t.UsuarioId == usuarioId && t.Proposito == proposito && t.UsadoEn is null).ToList());
     public Task GuardarAsync(IEnumerable<TokenAccion> tokens, CancellationToken ct = default) => Task.CompletedTask;
@@ -70,6 +73,42 @@ internal sealed class MensajeriaCaptura : IMensajeriaIdentidad
     { UltimoCodigoMfa[u.Id] = codigo; return Task.CompletedTask; }
 }
 
+internal sealed class DirectorioPacientesEnMemoria : IDirectorioPacientes
+{
+    public sealed class Ficha(Guid organizacionId, string? correo, string? telefono, DateOnly nacimiento, string ultimos4)
+    {
+        public Guid OrganizacionId { get; } = organizacionId;
+        public string? Correo { get; } = correo;
+        public string? Telefono { get; } = telefono;
+        public DateOnly Nacimiento { get; } = nacimiento;
+        public string Ultimos4 { get; } = ultimos4;
+        public bool TieneCuenta { get; set; }
+    }
+
+    public Dictionary<Guid, Ficha> Pacientes { get; } = [];
+
+    public Task<ContactoPaciente?> ObtenerContactoAsync(Guid pacienteId, CancellationToken ct = default) =>
+        Task.FromResult(Pacientes.TryGetValue(pacienteId, out var f)
+            ? new ContactoPaciente(f.OrganizacionId, f.Correo, f.Telefono, f.TieneCuenta) : null);
+
+    public Task<bool> VerificarIdentidadAsync(Guid pacienteId, DateOnly fechaNacimiento, string ultimos4Documento, CancellationToken ct = default) =>
+        Task.FromResult(Pacientes.TryGetValue(pacienteId, out var f) && f.Nacimiento == fechaNacimiento && f.Ultimos4 == ultimos4Documento);
+
+    public Task VincularCuentaAsync(Guid pacienteId, Guid usuarioId, CancellationToken ct = default)
+    { Pacientes[pacienteId].TieneCuenta = true; return Task.CompletedTask; }
+}
+
+internal sealed class ConsentimientosEnMemoria : IConsentimientos
+{
+    public const string Terminos = "terminos-2026-10";
+    public const string Aviso = "aviso-2026-10";
+    public List<(Guid PacienteId, string Tipo, string Version)> Registrados { get; } = [];
+
+    public VersionesLegales Vigentes(Guid organizacionId) => new(Terminos, Aviso);
+    public Task RegistrarAceptacionAsync(Guid pacienteId, string tipo, string versionTexto, Guid firmadoPor, DateTimeOffset en, CancellationToken ct = default)
+    { Registrados.Add((pacienteId, tipo, versionTexto)); return Task.CompletedTask; }
+}
+
 public class FabricaApi : WebApplicationFactory<Program>
 {
     internal RelojDePrueba Reloj { get; } = new();
@@ -77,6 +116,8 @@ public class FabricaApi : WebApplicationFactory<Program>
     internal SesionesEnMemoria Sesiones { get; } = new();
     internal TokensEnMemoria Tokens { get; } = new();
     internal MensajeriaCaptura Mensajeria { get; } = new();
+    internal DirectorioPacientesEnMemoria Directorio { get; } = new();
+    internal ConsentimientosEnMemoria Consentimientos { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -95,6 +136,10 @@ public class FabricaApi : WebApplicationFactory<Program>
             s.AddSingleton<ITokensAccion>(Tokens);
             s.RemoveAll<IMensajeriaIdentidad>();
             s.AddSingleton<IMensajeriaIdentidad>(Mensajeria);
+            s.RemoveAll<IDirectorioPacientes>();
+            s.AddSingleton<IDirectorioPacientes>(Directorio);
+            s.RemoveAll<IConsentimientos>();
+            s.AddSingleton<IConsentimientos>(Consentimientos);
         });
     }
 }

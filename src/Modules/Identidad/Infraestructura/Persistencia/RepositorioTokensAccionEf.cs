@@ -24,6 +24,10 @@ public sealed class RepositorioTokensAccionEf(IdentidadDbContext db) : ITokensAc
         Guid usuarioId, PropositoToken proposito, CancellationToken ct = default) =>
         await db.TokensAccion.Where(t => t.UsuarioId == usuarioId && t.Proposito == proposito && t.UsadoEn == null).ToListAsync(ct);
 
+    public async Task<IReadOnlyList<TokenAccion>> ObtenerPendientesDePacienteAsync(
+        Guid pacienteId, PropositoToken proposito, CancellationToken ct = default) =>
+        await db.TokensAccion.Where(t => t.PacienteId == pacienteId && t.Proposito == proposito && t.UsadoEn == null).ToListAsync(ct);
+
     public async Task GuardarAsync(IEnumerable<TokenAccion> tokens, CancellationToken ct = default)
     {
         db.ChangeTracker.DetectChanges();
