@@ -16,6 +16,7 @@ public sealed class IdentidadDbContext(DbContextOptions<IdentidadDbContext> opci
     public const string ColumnaVersion = "row_version";
 
     public DbSet<Usuario> Usuarios => Set<Usuario>();
+    public DbSet<Sesion> Sesiones => Set<Sesion>();
 
     protected override void OnModelCreating(ModelBuilder modelo)
     {
@@ -50,6 +51,25 @@ public sealed class IdentidadDbContext(DbContextOptions<IdentidadDbContext> opci
             u.Property(x => x.HashContrasena).IsRequired();
             u.Property<List<DateTimeOffset>>("_fallosRecientes").HasConversion(Json<DateTimeOffset>(), Comparador<DateTimeOffset>());
             u.Property<List<string>>("_codigosRecuperacionHash").HasConversion(Json<string>(), Comparador<string>());
+        });
+
+        modelo.Entity<Sesion>(s =>
+        {
+            s.ToTable("sesion");
+            s.HasKey(x => x.Id);
+            s.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            s.Property(x => x.UsuarioId).HasColumnName("usuario_id");
+            s.Property(x => x.OrganizacionId).HasColumnName("organizacion_id");
+            s.Property(x => x.EsPersonal).HasColumnName("es_personal");
+            s.Property(x => x.HashRenovacion).HasColumnName("hash_renovacion").HasMaxLength(64).IsRequired();
+            s.Property(x => x.HashRenovacionAnterior).HasColumnName("hash_renovacion_anterior").HasMaxLength(64);
+            s.Property(x => x.CreadaEn).HasColumnName("creada_en");
+            s.Property(x => x.UltimaActividad).HasColumnName("ultima_actividad");
+            s.Property(x => x.RevocadaEn).HasColumnName("revocada_en");
+            s.Property<Guid>(ColumnaVersion).HasColumnName(ColumnaVersion).IsConcurrencyToken();
+            s.HasIndex(x => x.HashRenovacion).IsUnique();
+            s.HasIndex(x => x.HashRenovacionAnterior);
+            s.HasIndex(x => x.UsuarioId);
         });
     }
 

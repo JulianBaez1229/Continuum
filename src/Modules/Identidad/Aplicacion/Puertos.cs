@@ -45,6 +45,9 @@ public enum TipoEventoIdentidad
     CuentaBloqueada,
     MfaHabilitado,
     CodigoRecuperacionUsado,
+    CierreSesion,
+    CierreSesionTodas,
+    TokenRenovacionReutilizado,
 }
 
 public sealed record EventoIdentidad(
@@ -53,3 +56,33 @@ public sealed record EventoIdentidad(
     Guid? UsuarioId = null,
     Guid? OrganizacionId = null,
     string? Detalle = null);
+
+public enum PropositoDesafio { SegundoFactor, ConfigurarMfa }
+
+/// <summary>
+/// Tokens de acceso (15 min, RF-IAM-006) y desafíos de corta vida que atan el segundo factor a un
+/// primer factor ya superado. Un desafío nunca sirve como token de acceso.
+/// </summary>
+public interface IEmisorTokens
+{
+    string EmitirAcceso(Usuario usuario, Guid sesionId);
+    string EmitirDesafio(Guid usuarioId, PropositoDesafio proposito);
+    Guid? ValidarDesafio(string token, PropositoDesafio proposito);
+}
+
+public interface ISesiones
+{
+    Task AgregarAsync(Sesion sesion, CancellationToken ct = default);
+    Task<Sesion?> ObtenerPorIdAsync(Guid id, CancellationToken ct = default);
+    /// <summary>Busca por el hash vigente o por el inmediatamente anterior (detección de reutilización).</summary>
+    Task<Sesion?> ObtenerPorHashRenovacionAsync(string hash, CancellationToken ct = default);
+    Task<IReadOnlyList<Sesion>> ObtenerNoRevocadasDeUsuarioAsync(Guid usuarioId, CancellationToken ct = default);
+    Task GuardarAsync(IEnumerable<Sesion> sesiones, CancellationToken ct = default);
+}
+
+/// <summary>Política de sesión por organización (módulo 06: <c>duracion_sesion_inactiva_min</c>).</summary>
+public interface IPoliticaSesion
+{
+    TimeSpan Inactividad(Guid organizacionId, bool esPersonal);
+    TimeSpan DuracionMaxima(Guid organizacionId, bool esPersonal);
+}
