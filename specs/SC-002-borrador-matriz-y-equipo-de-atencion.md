@@ -1,11 +1,12 @@
 <!--
 BORRADOR. Según docs/GUIA-DE-ACTUALIZACION.md §2, la solicitud definitiva se copia a
-docs/cambios/SC-001-matriz-y-equipo-de-atencion.md en una rama `docs/SC-001-matriz-y-equipo-de-atencion`,
-con su propio PR. Aquí no se edita nada de docs/. El número SC-001 es provisional (no existe aún ninguna solicitud).
+docs/cambios/SC-002-matriz-y-equipo-de-atencion.md en una rama `docs/SC-002-matriz-y-equipo-de-atencion`,
+con su propio PR. Aquí no se edita nada de docs/. El número SC-002 es el siguiente libre: SC-001 ya lo ocupa
+docs/cambios/SC-001-parametros-modulo-07.md (comprobar de nuevo antes de abrir la rama definitiva).
 Origen: specs/2026-10-09-politica-de-autorizacion-design.md
 -->
 ---
-id: SC-001
+id: SC-002
 titulo: "Matriz de permisos explícita, permiso sensible y visibilidad del asistente"
 solicitante: "Dev A — Seguridad y clínico (borrador asistido por Claude Code)"
 fecha: 2026-10-09
@@ -14,7 +15,7 @@ estado: abierta
 prioridad: alta
 ---
 
-# SC-001 — Matriz de permisos explícita, permiso sensible y visibilidad del asistente
+# SC-002 — Matriz de permisos explícita, permiso sensible y visibilidad del asistente
 
 ## 1. Descripción del cambio
 
@@ -62,7 +63,7 @@ Al diseñar la política de autorización se encontraron contradicciones y vací
 
    **Después:** el miembro del equipo **sin** permiso explícito lee el `Resumen` (= «diagnóstico y plan») de la nota y no puede crear notas ni leer órdenes ni signos vitales del episodio. El tratante y el miembro con permiso ven todo. El asistente clínico y los profesionales sin relación clínica no ven nada.
 
-   **Qué cambia respecto al «Antes»:** la fila actual solo distingue entre quien tiene `T` + permiso específico (lee) y quien no (nada). SC-001 añade un nivel intermedio: el miembro del equipo sin permiso explícito lee el `Resumen` de la nota; los demás profesionales siguen sin ver nada.
+   **Qué cambia respecto al «Antes»:** la fila actual solo distingue entre quien tiene `T` + permiso específico (lee) y quien no (nada). SC-002 añade un nivel intermedio: el miembro del equipo sin permiso explícito lee el `Resumen` de la nota; los demás profesionales siguen sin ver nada.
 
    > **Decisión de producto/legal pendiente.** El `Resumen` incluye el **diagnóstico**, que en salud mental o VIH es precisamente el dato que `RN-016` protege («solo el tratante y quienes él autorice ven el detalle»). Antes de que la política sirva endpoints reales, el equipo debe confirmar, con asesoría legal (módulo 24), **qué contiene el resumen visible** para el miembro del equipo sin permiso; el módulo 12 define la composición del resumen. Si se decide que el diagnóstico no debe mostrarse en episodios sensibles, el nivel `Resumen` se vacía o se elimina, y esta aclaración y `CA-ROL-005` (4.6) cambian con él. La política solo devuelve el nivel `Resumen`; los campos que lo componen los decide `HistoriaClinica`.
 
@@ -81,7 +82,7 @@ Al diseñar la política de autorización se encontraron contradicciones y vací
 
 ### 4.4 Módulo 12 — nuevo requisito y criterio
 
-> **RF-HCE-017** (S, origen SC-001): El sistema deberá permitir marcar en la plantilla de nota qué secciones puede ver el asistente clínico. El asistente solo ve esas secciones y nunca en episodios sensibles.
+> **RF-HCE-017** (S, origen SC-002): El sistema deberá permitir marcar en la plantilla de nota qué secciones puede ver el asistente clínico. El asistente solo ve esas secciones y nunca en episodios sensibles.
 
 > **CA-HCE-006:** **Dado** una plantilla con la sección «Evaluación funcional» marcada como visible al asistente, **cuando** el asistente clínico del equipo abre la nota, **entonces** ve esa sección, no los diagnósticos ni las demás secciones.
 
@@ -117,6 +118,6 @@ Al diseñar la política de autorización se encontraron contradicciones y vací
 
 ## 7. Implementación
 
-- Rama / PR: `docs/SC-001-matriz-y-equipo-de-atencion` (pendiente)
+- Rama / PR: `docs/SC-002-matriz-y-equipo-de-atencion` (pendiente)
 - Versión de la documentación: módulo 03 → 1.1.0, módulo 05 → 1.1.0, módulo 12 → 1.1.0
 - Entrada en CHANGELOG: ☐

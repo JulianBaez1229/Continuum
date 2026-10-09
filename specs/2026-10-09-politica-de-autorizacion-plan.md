@@ -380,4 +380,4 @@ Entradas que la spec implica y que pueden romper la política. Cada línea tiene
 
 ## Fuera de este plan
 
-Adaptador HTTP, persistencia de roles y habilitaciones, implementaciones reales de los puertos, `RF-ROL-001` a `004` y `006`, y la solicitud de cambio `SC-001` (su borrador está en `specs/` y sigue `docs/GUIA-DE-ACTUALIZACION.md`). La migración del indicador `permite_sensible` es de Dev B y depende de que `SC-001` se apruebe.
+Adaptador HTTP, persistencia de roles y habilitaciones, implementaciones reales de los puertos, `RF-ROL-001` a `004` y `006`, y la solicitud de cambio `SC-002` (su borrador está en `specs/` y sigue `docs/GUIA-DE-ACTUALIZACION.md`). La migración del indicador `permite_sensible` es de Dev B y depende de que `SC-002` se apruebe.
