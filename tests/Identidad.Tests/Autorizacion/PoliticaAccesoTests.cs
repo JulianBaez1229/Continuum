@@ -884,4 +884,78 @@ public class PoliticaAccesoTests
             Prohibido(MotivoDenegacion.SinHabilitacion),
             PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.NotaClinica, CtxDeEpisodio, ProfesionalCon(Rel(TipoRelacion.Tratante), enOtraEspecialidad)));
     }
+
+    private static IReadOnlySet<Rol> Roles(params Rol[] roles) => roles.ToHashSet();
+
+    [Fact]
+    public void RF_ROL_005_necesidades_de_recepcion_leyendo_datos_demograficos_son_ninguna()
+    {
+        Assert.Equal(
+            new NecesidadesHechos(VinculoPaciente: false, Relacion: false, Habilitacion: false),
+            PoliticaAcceso.Necesidades(Accion.Leer, TipoRecurso.DatosDemograficos, Roles(Rol.Recepcion)));
+    }
+
+    [Fact]
+    public void RF_ROL_005_necesidades_del_paciente_leyendo_datos_demograficos_son_solo_el_vinculo()
+    {
+        Assert.Equal(
+            new NecesidadesHechos(VinculoPaciente: true, Relacion: false, Habilitacion: false),
+            PoliticaAcceso.Necesidades(Accion.Leer, TipoRecurso.DatosDemograficos, Roles(Rol.Paciente)));
+        // El alcance solo forma parte de la celda en los reportes: aquí se ignora.
+        Assert.Equal(
+            new NecesidadesHechos(VinculoPaciente: true, Relacion: false, Habilitacion: false),
+            PoliticaAcceso.Necesidades(Accion.Leer, TipoRecurso.DatosDemograficos, Roles(Rol.Paciente), AlcanceReporte.Global));
+    }
+
+    [Fact]
+    public void RF_ROL_005_necesidades_del_profesional_leyendo_una_nota_son_solo_la_relacion()
+    {
+        Assert.Equal(
+            new NecesidadesHechos(VinculoPaciente: false, Relacion: true, Habilitacion: false),
+            PoliticaAcceso.Necesidades(Accion.Leer, TipoRecurso.NotaClinica, Roles(Rol.Profesional)));
+    }
+
+    [Fact]
+    public void RF_ROL_005_necesidades_del_profesional_creando_una_nota_son_relacion_y_habilitacion()
+    {
+        Assert.Equal(
+            new NecesidadesHechos(VinculoPaciente: false, Relacion: true, Habilitacion: true),
+            PoliticaAcceso.Necesidades(Accion.Crear, TipoRecurso.NotaClinica, Roles(Rol.Profesional)));
+    }
+
+    [Fact]
+    public void RF_ROL_005_necesidades_sin_celda_no_piden_ningun_hecho_ni_habilitacion()
+    {
+        // Profesional x Actualizar x NotaClinica no tiene celda: aunque ExigeHabilitacion sea cierto para esa
+        // combinación, no hay nada que evaluar y no debe pedirse la habilitación.
+        Assert.Equal(
+            new NecesidadesHechos(VinculoPaciente: false, Relacion: false, Habilitacion: false),
+            PoliticaAcceso.Necesidades(Accion.Actualizar, TipoRecurso.NotaClinica, Roles(Rol.Profesional)));
+        // Sin roles tampoco hay celdas.
+        Assert.Equal(
+            new NecesidadesHechos(VinculoPaciente: false, Relacion: false, Habilitacion: false),
+            PoliticaAcceso.Necesidades(Accion.Crear, TipoRecurso.NotaClinica, Roles()));
+    }
+
+    [Fact]
+    public void RF_ROL_005_necesidades_con_varios_roles_son_la_union_de_las_de_cada_rol()
+    {
+        // Paciente lee sus órdenes liberadas (vínculo) y el profesional las lee por relación clínica.
+        Assert.Equal(
+            new NecesidadesHechos(VinculoPaciente: true, Relacion: true, Habilitacion: false),
+            PoliticaAcceso.Necesidades(Accion.Leer, TipoRecurso.Orden, Roles(Rol.Paciente, Rol.Profesional)));
+        // Solo el profesional crea órdenes: el rol paciente no aporta el vínculo.
+        Assert.Equal(
+            new NecesidadesHechos(VinculoPaciente: false, Relacion: true, Habilitacion: true),
+            PoliticaAcceso.Necesidades(Accion.Crear, TipoRecurso.Orden, Roles(Rol.Paciente, Rol.Profesional)));
+    }
+
+    [Fact]
+    public void RF_ROL_005_necesidades_solo_el_paciente_pide_vinculo_aunque_otros_roles_tengan_celdas_propias()
+    {
+        // Profesional x Cita x Leer exige Propio, pero «propio» del profesional sale de su ficha, no del vínculo.
+        Assert.Equal(
+            new NecesidadesHechos(VinculoPaciente: false, Relacion: false, Habilitacion: false),
+            PoliticaAcceso.Necesidades(Accion.Leer, TipoRecurso.Cita, Roles(Rol.Profesional)));
+    }
 }

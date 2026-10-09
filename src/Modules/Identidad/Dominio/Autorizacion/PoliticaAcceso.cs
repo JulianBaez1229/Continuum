@@ -1,6 +1,12 @@
 namespace Continuum.Identidad.Dominio.Autorizacion;
 
 /// <summary>
+/// Hechos que la capa de aplicación debe cargar para que <see cref="PoliticaAcceso.Evaluar"/> decida (spec §6).
+/// Un hecho en <c>false</c> no se consulta: el vínculo del paciente, la relación clínica y la habilitación son I/O.
+/// </summary>
+public sealed record NecesidadesHechos(bool VinculoPaciente, bool Relacion, bool Habilitacion);
+
+/// <summary>
 /// Política de autorización (spec §6): función pura que decide con los hechos ya resueltos, sin I/O.
 /// Deniega por defecto: solo concede lo que una celda de <see cref="MatrizPermisos"/> permite y cuyas condiciones se cumplen.
 /// </summary>
@@ -45,6 +51,33 @@ public static class PoliticaAcceso
             return Prohibido(MotivoDenegacion.DatosInsuficientes);
 
         return Combinar(hechos.Actor.Roles.Select(rol => EvaluarRol(rol, accion, recurso, contexto, hechos)));
+    }
+
+    /// <summary>
+    /// Hechos que <see cref="Evaluar"/> podría consultar para esta combinación de acción, recurso, roles y alcance, para
+    /// que el llamador cargue solo esos. Se recorren las celdas de los roles; un rol sin celda no necesita nada porque
+    /// la política lo deniega en R2 antes de mirar ningún hecho.
+    /// </summary>
+    /// <param name="alcance">Solo forma parte de la celda en los reportes; en los demás recursos se ignora.</param>
+    public static NecesidadesHechos Necesidades(Accion accion, TipoRecurso recurso, IReadOnlySet<Rol> roles, AlcanceReporte? alcance = null)
+    {
+        var alcanceDeCelda = recurso == TipoRecurso.Reporte ? alcance : null;
+        bool vinculoPaciente = false, relacion = false, habilitacion = false;
+
+        foreach (var rol in roles)
+        {
+            if (MatrizPermisos.Buscar(rol, recurso, accion, alcanceDeCelda) is not { } celda)
+                continue;
+
+            // R4: solo el rol paciente compara con su vínculo; el «propio» del profesional sale de su ficha.
+            vinculoPaciente |= rol == Rol.Paciente && celda.Condiciones.HasFlag(Condiciones.Propio);
+            // R6 (y R7): la relación clínica que trae el puerto.
+            relacion |= celda.Condiciones.HasFlag(Condiciones.RelacionClinica);
+            // R8: solo si el rol tiene celda; sin celda no se llega a la habilitación.
+            habilitacion |= ExigeHabilitacion(rol, accion, recurso);
+        }
+
+        return new NecesidadesHechos(vinculoPaciente, relacion, habilitacion);
     }
 
     /// <summary>
