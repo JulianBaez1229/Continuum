@@ -5,11 +5,10 @@ namespace Continuum.Identidad.Aplicacion.Autorizacion;
 /// <summary>
 /// Resuelve los hechos que la política necesita y delega la decisión en <see cref="PoliticaAcceso"/> (spec §6).
 /// La carga es perezosa: solo se consulta un puerto si <see cref="PoliticaAcceso.Necesidades"/> declara que su hecho
-/// puede intervenir. Si un puerto lanza una excepción, esta se propaga y nunca se concede acceso (spec §10).
+/// puede intervenir. Cada denegación se registra en <see cref="IAuditoriaAutorizacion"/> antes de devolverla (spec §9).
+/// Falla cerrada (spec §10): no captura nada; si un puerto, o el registro de la denegación, lanza una excepción, esta
+/// se propaga y el llamador nunca recibe una decisión sin su evento ni un acceso concedido.
 /// </summary>
-// Transitorio: la auditoría de denegaciones (spec §9) la añade la Task 7; hasta entonces `auditoria` no se lee.
-// La Task 7 debe quitar este pragma.
-#pragma warning disable CS9113
 public sealed class Autorizador(
     IRolesPorSede roles,
     IVinculoPaciente vinculo,
@@ -18,7 +17,6 @@ public sealed class Autorizador(
     IZonaHorariaSede zonas,
     IReloj reloj,
     IAuditoriaAutorizacion auditoria) : IAutorizador
-#pragma warning restore CS9113
 {
     public async Task<Decision> AutorizarAsync(SolicitudAcceso solicitud, CancellationToken ct = default)
     {
@@ -29,7 +27,8 @@ public sealed class Autorizador(
         // R0: sin perfil (usuario inexistente o inactivo) no hay nada más que cargar.
         var perfil = await roles.ObtenerPerfilAsync(solicitud.UsuarioId, solicitud.SedeActivaId, ct);
         if (perfil is null)
-            return Decision.Denegar(TipoDenegacion.Prohibido, MotivoDenegacion.SinRolEnSede);
+            return await AuditarSiDenegadaAsync(
+                Decision.Denegar(TipoDenegacion.Prohibido, MotivoDenegacion.SinRolEnSede), solicitud, null, ahora, ct);
 
         // R1: un recurso de otra organización se resuelve solo con el perfil. Consultar más hechos para un 404
         // seguro sería trabajo inútil y, con datos de otra organización, un riesgo.
@@ -37,7 +36,29 @@ public sealed class Autorizador(
             ? new HechosAcceso(perfil, solicitud.SedeActivaId, null, null, null, DateOnly.FromDateTime(ahora.UtcDateTime))
             : await CargarHechosAsync(perfil, solicitud, ahora, ct);
 
-        return PoliticaAcceso.Evaluar(solicitud.Accion, solicitud.Recurso, contexto, hechos);
+        var decision = PoliticaAcceso.Evaluar(solicitud.Accion, solicitud.Recurso, contexto, hechos);
+        return await AuditarSiDenegadaAsync(decision, solicitud, perfil, ahora, ct);
+    }
+
+    /// <summary>
+    /// Registra un único <see cref="EventoAutorizacion"/> si la decisión es una denegación (spec §9) y la devuelve; una
+    /// decisión permitida no se audita aquí. Solo identificadores y códigos: nunca contenido clínico. Sin <c>try/catch</c>:
+    /// si el registro falla, la excepción llega al llamador (spec §10).
+    /// </summary>
+    private async Task<Decision> AuditarSiDenegadaAsync(
+        Decision decision, SolicitudAcceso solicitud, PerfilActor? perfil, DateTimeOffset ahora, CancellationToken ct)
+    {
+        if (decision.EstaPermitido)
+            return decision;
+
+        var contexto = solicitud.Contexto;
+        await auditoria.RegistrarDenegacionAsync(
+            new EventoAutorizacion(
+                ahora, solicitud.UsuarioId, perfil?.OrganizacionId, solicitud.SedeActivaId,
+                (IReadOnlyCollection<Rol>?)perfil?.Roles ?? [], solicitud.Accion, solicitud.Recurso,
+                contexto.RecursoId, contexto.PacienteId, decision.Tipo!.Value, decision.Motivo!.Value),
+            ct);
+        return decision;
     }
 
     /// <summary>Carga, en este orden y solo si hacen falta: vínculo del paciente, relación clínica, y habilitación con la zona de la sede.</summary>

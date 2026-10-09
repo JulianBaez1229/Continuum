@@ -1,3 +1,4 @@
+using System.Reflection;
 using Continuum.Identidad.Aplicacion.Autorizacion;
 using Continuum.Identidad.Dominio.Autorizacion;
 
@@ -5,7 +6,8 @@ namespace Continuum.Identidad.Tests.Autorizacion;
 
 /// <summary>
 /// El <see cref="Autorizador"/> solo carga los hechos que la política declara necesarios (spec §6).
-/// Los contadores de llamadas de los dobles son la prueba de que la carga es perezosa.
+/// Los contadores de llamadas de los dobles son la prueba de que la carga es perezosa. También verifica que cada
+/// denegación se audita (spec §9) y que ante cualquier fallo de un puerto el acceso se cierra (spec §10).
 /// </summary>
 public class AutorizadorTests
 {
@@ -19,6 +21,7 @@ public class AutorizadorTests
     private static readonly Guid OtroPaciente = Guid.Parse("00000000-0000-0000-0000-0000000000e2");
     private static readonly Guid Episodio = Guid.Parse("00000000-0000-0000-0000-0000000000f1");
     private static readonly Guid Especialidad = Guid.Parse("00000000-0000-0000-0000-000000000051");
+    private static readonly Guid RecursoNota = Guid.Parse("00000000-0000-0000-0000-0000000000a9");
 
     private static readonly HabilitacionProfesional HabilitacionVigente = new(Especialidad, new HashSet<Guid>(), new DateOnly(2027, 1, 1));
     private static readonly RelacionClinica Tratante = new(TipoRelacion.Tratante, PermiteSensible: false, EpisodioSensible: false, Especialidad);
@@ -46,8 +49,9 @@ public class AutorizadorTests
     }
 
     /// <summary>Contexto del recurso. La organización por defecto es <see cref="Org"/>.</summary>
-    private static ContextoRecurso Ctx(Guid? org = null, Guid? paciente = null, Guid? episodio = null, Guid? sede = null, Guid? profesional = null) =>
-        new(org ?? Org, PacienteId: paciente, EpisodioId: episodio, SedeId: sede, ProfesionalId: profesional);
+    private static ContextoRecurso Ctx(
+        Guid? org = null, Guid? paciente = null, Guid? episodio = null, Guid? sede = null, Guid? profesional = null, Guid? recurso = null) =>
+        new(org ?? Org, RecursoId: recurso, PacienteId: paciente, EpisodioId: episodio, SedeId: sede, ProfesionalId: profesional);
 
     private static Decision Prohibido(MotivoDenegacion motivo) => Decision.Denegar(TipoDenegacion.Prohibido, motivo);
 
@@ -360,5 +364,206 @@ public class AutorizadorTests
 
         Assert.Equal(Decision.Permitir(NivelAcceso.Completo), await Escribir(utcMenos4));
         Assert.Equal(Prohibido(MotivoDenegacion.HabilitacionVencida), await Escribir(TimeZoneInfo.Utc));
+    }
+
+    // ---- Auditoría de denegaciones (spec §9) y falla cerrada (spec §10) ----
+
+    [Fact]
+    public async Task CA_AUD_003_recepcion_abre_nota_por_url_directa_genera_evento_denegado_critico()
+    {
+        // Recepción abre una nota clínica por URL directa: Prohibido y un único evento con todos sus campos.
+        // El nivel «crítico» lo fija el puerto de Auditoría (siempre registra denegaciones como críticas).
+        using var cts = new CancellationTokenSource();
+        var ahora = new DateTimeOffset(2026, 3, 4, 5, 6, 7, TimeSpan.Zero);
+        var e = new Escenario([Rol.Recepcion]);
+        e.Reloj.Ahora = ahora;
+
+        var decision = await e.Autorizar(
+            Accion.Leer, TipoRecurso.NotaClinica, Ctx(paciente: OtroPaciente, episodio: Episodio, recurso: RecursoNota), cts.Token);
+
+        Assert.Equal(Prohibido(MotivoDenegacion.SinPermisoDeRol), decision);
+        var evento = Assert.Single(e.Auditoria.Eventos);
+        Assert.Equal(1, e.Auditoria.Llamadas);
+        Assert.Equal(cts.Token, e.Auditoria.UltimoToken);
+        Assert.Equal(ahora, evento.OcurridoEn);
+        Assert.Equal(Usuario, evento.UsuarioId);
+        Assert.Equal(Org, evento.OrganizacionId);
+        Assert.Equal(Sede, evento.SedeId);
+        Assert.Equal([Rol.Recepcion], evento.Roles);
+        Assert.Equal(Accion.Leer, evento.Accion);
+        Assert.Equal(TipoRecurso.NotaClinica, evento.Recurso);
+        Assert.Equal(RecursoNota, evento.RecursoId);
+        Assert.Equal(OtroPaciente, evento.PacienteId);
+        Assert.Equal(TipoDenegacion.Prohibido, evento.Tipo);
+        Assert.Equal(MotivoDenegacion.SinPermisoDeRol, evento.Motivo);
+    }
+
+    [Fact]
+    public async Task RF_ROL_005_acceso_permitido_no_genera_evento()
+    {
+        // Los accesos permitidos los audita el módulo consumidor (spec §9): el autorizador no escribe nada.
+        var recepcion = new Escenario([Rol.Recepcion]);
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            await recepcion.Autorizar(Accion.Leer, TipoRecurso.DatosDemograficos, Ctx(paciente: OtroPaciente)));
+        Assert.Equal(0, recepcion.Auditoria.Llamadas);
+        Assert.Empty(recepcion.Auditoria.Eventos);
+
+        var tratante = new Escenario([Rol.Profesional], ProfesionalActor);
+        tratante.Relacion.Relacion = Tratante;
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            await tratante.Autorizar(Accion.Leer, TipoRecurso.NotaClinica, Ctx(paciente: OtroPaciente, episodio: Episodio, recurso: RecursoNota)));
+        Assert.Equal(0, tratante.Auditoria.Llamadas);
+        Assert.Empty(tratante.Auditoria.Eventos);
+    }
+
+    [Fact]
+    public async Task RN_015_otra_organizacion_genera_evento_con_motivo_otra_organizacion()
+    {
+        var e = new Escenario([Rol.Profesional], ProfesionalActor);
+
+        var decision = await e.Autorizar(
+            Accion.Leer, TipoRecurso.NotaClinica, Ctx(org: OtraOrg, paciente: OtroPaciente, episodio: Episodio, recurso: RecursoNota));
+
+        Assert.Equal(Decision.Denegar(TipoDenegacion.NoEncontrado, MotivoDenegacion.OtraOrganizacion), decision);
+        var evento = Assert.Single(e.Auditoria.Eventos);
+        Assert.Equal(TipoDenegacion.NoEncontrado, evento.Tipo);
+        Assert.Equal(MotivoDenegacion.OtraOrganizacion, evento.Motivo);
+        // La organización del evento es la del actor, no la del recurso ajeno.
+        Assert.Equal(Org, evento.OrganizacionId);
+        Assert.Equal(Usuario, evento.UsuarioId);
+        Assert.Equal(Sede, evento.SedeId);
+        Assert.Equal([Rol.Profesional], evento.Roles);
+        Assert.Equal(Accion.Leer, evento.Accion);
+        Assert.Equal(TipoRecurso.NotaClinica, evento.Recurso);
+        Assert.Equal(RecursoNota, evento.RecursoId);
+        Assert.Equal(OtroPaciente, evento.PacienteId);
+    }
+
+    [Fact]
+    public async Task RF_ROL_005_perfil_nulo_genera_evento_con_organizacion_nula()
+    {
+        var ahora = new DateTimeOffset(2026, 3, 4, 5, 6, 7, TimeSpan.Zero);
+        var e = new Escenario([Rol.Recepcion]);
+        e.Roles.Perfil = null;
+        e.Reloj.Ahora = ahora;
+
+        var decision = await e.Autorizar(
+            Accion.Leer, TipoRecurso.DatosDemograficos, Ctx(paciente: OtroPaciente, recurso: RecursoNota));
+
+        Assert.Equal(Prohibido(MotivoDenegacion.SinRolEnSede), decision);
+        var evento = Assert.Single(e.Auditoria.Eventos);
+        Assert.Equal(ahora, evento.OcurridoEn);
+        Assert.Equal(Usuario, evento.UsuarioId);
+        Assert.Null(evento.OrganizacionId);
+        Assert.Equal(Sede, evento.SedeId);
+        Assert.Empty(evento.Roles);
+        Assert.Equal(Accion.Leer, evento.Accion);
+        Assert.Equal(TipoRecurso.DatosDemograficos, evento.Recurso);
+        Assert.Equal(RecursoNota, evento.RecursoId);
+        Assert.Equal(OtroPaciente, evento.PacienteId);
+        Assert.Equal(TipoDenegacion.Prohibido, evento.Tipo);
+        Assert.Equal(MotivoDenegacion.SinRolEnSede, evento.Motivo);
+    }
+
+    [Fact]
+    public void RF_ROL_005_el_evento_de_autorizacion_no_tiene_texto_libre()
+    {
+        // Solo identificadores y códigos: sin propiedades de texto no puede viajar contenido clínico (spec §9).
+        var propiedades = typeof(EventoAutorizacion).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+        Assert.NotEmpty(propiedades);
+        Assert.DoesNotContain(propiedades, p => p.PropertyType == typeof(string));
+    }
+
+    /// <summary>
+    /// Escenario en el que la solicitud llega hasta <paramref name="puerto"/> y este lanza <paramref name="fallo"/>.
+    /// Devuelve también cuántas veces se consultó ese puerto, para probar que el fallo se ejerció de verdad.
+    /// </summary>
+    private static (Escenario Escenario, Accion Accion, TipoRecurso Recurso, ContextoRecurso Contexto, Func<int> LlamadasDelPuerto)
+        EscenarioConPuertoCaido(string puerto, Exception fallo)
+    {
+        var contextoClinico = Ctx(paciente: OtroPaciente, episodio: Episodio, recurso: RecursoNota);
+        switch (puerto)
+        {
+            case "roles":
+            {
+                var e = new Escenario([Rol.Recepcion]);
+                e.Roles.Fallo = fallo;
+                return (e, Accion.Leer, TipoRecurso.DatosDemograficos, Ctx(paciente: OtroPaciente), () => e.Roles.Llamadas);
+            }
+            case "vinculo":
+            {
+                var e = new Escenario([Rol.Paciente]);
+                e.Vinculo.Fallo = fallo;
+                return (e, Accion.Leer, TipoRecurso.DatosDemograficos, Ctx(paciente: PacienteActor), () => e.Vinculo.Llamadas);
+            }
+            case "relacion":
+            {
+                var e = new Escenario([Rol.Profesional], ProfesionalActor);
+                e.Relacion.Fallo = fallo;
+                return (e, Accion.Leer, TipoRecurso.NotaClinica, contextoClinico, () => e.Relacion.Llamadas);
+            }
+            case "habilitaciones":
+            {
+                var e = new Escenario([Rol.Profesional], ProfesionalActor);
+                e.Relacion.Relacion = Tratante;
+                e.Habilitaciones.Fallo = fallo;
+                return (e, Accion.Crear, TipoRecurso.NotaClinica, contextoClinico, () => e.Habilitaciones.Llamadas);
+            }
+            case "zona":
+            {
+                var e = new Escenario([Rol.Profesional], ProfesionalActor);
+                e.Relacion.Relacion = Tratante;
+                e.Habilitaciones.Habilitacion = HabilitacionVigente;
+                e.Zonas.Fallo = fallo;
+                return (e, Accion.Crear, TipoRecurso.NotaClinica, contextoClinico, () => e.Zonas.Llamadas);
+            }
+            default:
+                throw new ArgumentOutOfRangeException(nameof(puerto), puerto, null);
+        }
+    }
+
+    [Theory]
+    [InlineData("roles")]
+    [InlineData("vinculo")]
+    [InlineData("relacion")]
+    [InlineData("habilitaciones")]
+    [InlineData("zona")]
+    public async Task RF_ROL_005_si_un_puerto_lanza_excepcion_se_propaga_y_no_se_concede_nada(string puerto)
+    {
+        // Falla cerrada (spec §10): la excepción llega tal cual al llamador, no se devuelve decisión alguna
+        // (ni Permitido ni una denegación auditada) y la auditoría queda sin tocar.
+        var fallo = new InvalidOperationException("puerto caído");
+        var (e, accion, recurso, contexto, llamadasDelPuerto) = EscenarioConPuertoCaido(puerto, fallo);
+
+        var lanzada = await Assert.ThrowsAsync<InvalidOperationException>(() => e.Autorizar(accion, recurso, contexto));
+
+        Assert.Same(fallo, lanzada);
+        Assert.Equal(1, llamadasDelPuerto());
+        Assert.Equal(0, e.Auditoria.Llamadas);
+        Assert.Empty(e.Auditoria.Eventos);
+    }
+
+    [Fact]
+    public async Task RF_ROL_005_si_falla_el_registro_de_la_denegacion_la_excepcion_se_propaga()
+    {
+        // Se prefiere fallar a perder en silencio un evento crítico (spec §10): el llamador nunca recibe la denegación sin su evento.
+        var fallo = new InvalidOperationException("auditoría caída");
+        var e = new Escenario([Rol.Recepcion]);
+        e.Auditoria.Fallo = fallo;
+
+        var lanzada = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => e.Autorizar(Accion.Leer, TipoRecurso.NotaClinica, Ctx(paciente: OtroPaciente, episodio: Episodio)));
+
+        Assert.Same(fallo, lanzada);
+        Assert.Equal(1, e.Auditoria.Llamadas);
+
+        // Con la auditoría caída, un acceso permitido sigue su curso: solo las denegaciones la usan.
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            await e.Autorizar(Accion.Leer, TipoRecurso.DatosDemograficos, Ctx(paciente: OtroPaciente)));
+        Assert.Equal(1, e.Auditoria.Llamadas);
     }
 }
