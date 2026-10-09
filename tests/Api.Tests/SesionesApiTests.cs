@@ -28,6 +28,7 @@ public abstract class SesionesApiBase(FabricaApi fabrica)
 
     protected sealed record Tokens(string Estado, string? TokenAcceso, string? TokenDesafio, string? TokenRenovacion);
     private sealed record InicioMfa(string Secreto);
+    protected string? UltimoSecreto { get; private set; }
 
     protected string NuevoUsuario(bool personal)
     {
@@ -51,6 +52,7 @@ public abstract class SesionesApiBase(FabricaApi fabrica)
             .Content.ReadFromJsonAsync<Tokens>())!;
         var inicio = (await (await Http.PostAsJsonAsync("/api/auth/mfa/configuracion/iniciar",
             new { tokenDesafio = primero.TokenDesafio })).Content.ReadFromJsonAsync<InicioMfa>())!;
+        UltimoSecreto = inicio.Secreto;
         await Http.PostAsJsonAsync("/api/auth/mfa/configuracion/confirmar",
             new { tokenDesafio = primero.TokenDesafio, codigo = Codigo(inicio.Secreto) });
         fabrica.Reloj.Avanzar(TimeSpan.FromSeconds(Totp.PasoSegundos));
@@ -61,6 +63,8 @@ public abstract class SesionesApiBase(FabricaApi fabrica)
             new { tokenDesafio = segundo.TokenDesafio, codigo = Codigo(inicio.Secreto) }))
             .Content.ReadFromJsonAsync<Tokens>())!;
     }
+
+    protected string CodigoActual() => Codigo(UltimoSecreto!);
 
     private string Codigo(string secreto) =>
         Totp.Generar(Base32.Decodificar(secreto), Totp.PasoDe(fabrica.Reloj.Ahora));

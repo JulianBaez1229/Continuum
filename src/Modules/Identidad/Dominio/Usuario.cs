@@ -96,6 +96,12 @@ public sealed class Usuario
     public void CambiarContrasena(string nuevoHash)
     {
         HashContrasena = nuevoHash;
+        ReiniciarFallos();
+    }
+
+    /// <summary>Levanta el bloqueo y borra los fallos (tras una recuperación o una reautenticación correctas).</summary>
+    public void ReiniciarFallos()
+    {
         _fallosRecientes.Clear();
         BloqueadoHasta = null;
         BloqueosConsecutivos = 0;

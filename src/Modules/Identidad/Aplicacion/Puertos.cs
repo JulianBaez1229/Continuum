@@ -74,7 +74,8 @@ public enum PropositoDesafio { SegundoFactor, ConfigurarMfa }
 /// </summary>
 public interface IEmisorTokens
 {
-    string EmitirAcceso(Usuario usuario, Guid sesionId);
+    /// <param name="reautenticadoEn">Instante de la última reautenticación (RF-IAM-010); null si no hubo.</param>
+    string EmitirAcceso(Usuario usuario, Guid sesionId, DateTimeOffset? reautenticadoEn = null);
     string EmitirDesafio(Guid usuarioId, PropositoDesafio proposito);
     Guid? ValidarDesafio(string token, PropositoDesafio proposito);
 }

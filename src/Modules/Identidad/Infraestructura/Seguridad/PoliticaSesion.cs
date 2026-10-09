@@ -12,6 +12,9 @@ public sealed class OpcionesSesion
 
     /// <summary>Supuesto (el módulo 07 no lo define): tope de una sesión aunque haya actividad continua.</summary>
     public int DuracionMaximaHoras { get; set; } = 12;
+
+    /// <summary>Supuesto (RF-IAM-010 no lo define): cuánto vale una reautenticación para acciones críticas.</summary>
+    public int ReautenticacionMinutos { get; set; } = 5;
 }
 
 /// <summary>
