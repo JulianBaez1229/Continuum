@@ -49,4 +49,20 @@ public class DecisionTests
     [InlineData(MotivoDenegacion.DatosInsuficientes, "DATOS_INSUFICIENTES")]
     public void RF_ROL_005_codigo_de_auditoria_de_cada_motivo(MotivoDenegacion motivo, string esperado) =>
         Assert.Equal(esperado, motivo.Codigo());
+
+    [Fact]
+    public void RF_ROL_005_todo_motivo_de_denegacion_tiene_codigo_unico_y_no_vacio()
+    {
+        // Un motivo nuevo sin código (o con uno repetido o mal formado) rompería el contrato con Auditoría (módulo 23).
+        var motivos = Enum.GetValues<MotivoDenegacion>();
+        var codigos = motivos.Select(motivo => motivo.Codigo()).ToList();
+
+        Assert.NotEmpty(codigos);
+        Assert.All(codigos, codigo =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(codigo));
+            Assert.Matches("^[A-Z]+(_[A-Z]+)*$", codigo);
+        });
+        Assert.Equal(motivos.Length, codigos.Distinct().Count());
+    }
 }

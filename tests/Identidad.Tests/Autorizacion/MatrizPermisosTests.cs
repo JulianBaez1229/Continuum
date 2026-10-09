@@ -159,6 +159,67 @@ public class MatrizPermisosTests
     }
 
     [Fact]
+    public void RF_ROL_005_la_lista_de_celdas_es_realmente_de_solo_lectura()
+    {
+        // Un `Permiso[]` tras `IReadOnlyList` se puede reasignar con un cast: la matriz debe ser inmutable de verdad.
+        var lista = (IList<Permiso>)MatrizPermisos.Todos;
+        var primera = lista[0];
+
+        // Reasignar la misma celda es inocuo si la lista fuera mutable, pero con una colección de solo lectura lanza.
+        Assert.Throws<NotSupportedException>(() => lista[0] = primera);
+        Assert.IsNotType<Permiso[]>(MatrizPermisos.Todos);
+    }
+
+    // ---- Guardas de invariantes (R7 y R8 no deben poder esquivarse con una edición futura de la matriz) ----
+    // La tabla de arriba fija las celdas una a una; estas dos reglas fijan la intención y fallan aunque alguien
+    // edite a la vez la matriz y la tabla copiada a mano.
+
+    [Fact]
+    public void RN_001_RN_016_toda_celda_de_recurso_de_episodio_exige_relacion_clinica_salvo_paciente_lee_orden_liberada()
+    {
+        // R7 (sensibilidad) solo se evalúa dentro del bloque de relación clínica (R6): una celda de episodio sin [T]
+        // dejaría ese recurso sin filtro de episodios sensibles. Hoy la única excepción es el paciente leyendo su orden liberada.
+        var celdasDeEpisodio = MatrizPermisos.Todos.Where(celda => PoliticaAcceso.EsDeEpisodio(celda.Recurso)).ToList();
+        Assert.NotEmpty(celdasDeEpisodio);
+
+        var excepcion = celdasDeEpisodio.Where(EsPacienteLeeOrden).ToList();
+        var unica = Assert.Single(excepcion);
+        Assert.Equal(P | Lib, unica.Condiciones);
+
+        foreach (var celda in celdasDeEpisodio.Except(excepcion))
+        {
+            Assert.True(
+                celda.Condiciones.HasFlag(T),
+                $"La celda {celda.Rol} x {celda.Recurso} x {celda.Accion} es de un recurso de episodio y debe exigir relación clínica [T] (R6/R7).");
+        }
+    }
+
+    private static bool EsPacienteLeeOrden(Permiso celda) =>
+        celda is { Rol: Rol.Paciente, Recurso: TipoRecurso.Orden, Accion: Accion.Leer };
+
+    [Fact]
+    public void RN_012_toda_escritura_sobre_nota_u_orden_es_de_profesional_con_relacion_clinica()
+    {
+        // R8 (habilitación) solo la evalúa la política para el rol Profesional dentro del bloque de relación clínica.
+        // Una escritura de otro rol, o sin [T], sobre notas u órdenes se saltaría la habilitación.
+        var escrituras = MatrizPermisos.Todos
+            .Where(celda => (celda.Recurso is TipoRecurso.NotaClinica or TipoRecurso.Orden)
+                && (celda.Accion is Accion.Crear or Accion.Actualizar or Accion.Anular))
+            .ToList();
+        Assert.NotEmpty(escrituras);
+
+        foreach (var celda in escrituras)
+        {
+            Assert.True(
+                celda.Rol == Rol.Profesional,
+                $"La escritura {celda.Rol} x {celda.Recurso} x {celda.Accion} no es del rol Profesional: R8 (RN-012) no la cubriría.");
+            Assert.True(
+                celda.Condiciones.HasFlag(T),
+                $"La escritura {celda.Rol} x {celda.Recurso} x {celda.Accion} debe exigir relación clínica [T] para que R8 (RN-012) se evalúe.");
+        }
+    }
+
+    [Fact]
     public void RF_ROL_005_valores_de_enum_fuera_de_rango_no_encuentran_celda()
     {
         Assert.Null(MatrizPermisos.Buscar((Rol)99, TipoRecurso.Cita, Accion.Leer));

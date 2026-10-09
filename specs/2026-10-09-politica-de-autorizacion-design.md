@@ -10,7 +10,7 @@
 | **Criterios** | `CA-ROL-001`, `CA-ROL-002`, `CA-ROL-003`, `CA-AUD-003`. Fuera: `CA-ROL-004` (acceso de emergencia, fuera del MVP). |
 | **Reglas** | `RN-001`, `RN-002`, `RN-012`, `RN-015`, `RN-016` (acceso a categorías sensibles) |
 
-> Esta spec no modifica `docs/`. Los cambios de documentación que exige (modelo de datos, módulo 12, matriz del módulo 03) van en la solicitud de cambio `SC-001` (borrador en `specs/SC-001-borrador-matriz-y-equipo-de-atencion.md`), que sigue `docs/GUIA-DE-ACTUALIZACION.md`.
+> Esta spec no modifica `docs/`. Los cambios de documentación que exige (modelo de datos, módulo 12, matriz del módulo 03) van en la solicitud de cambio `SC-002` (borrador en `specs/SC-002-borrador-matriz-y-equipo-de-atencion.md`), que sigue `docs/GUIA-DE-ACTUALIZACION.md`.
 
 ## 1. Objetivo
 
@@ -37,10 +37,10 @@ Decidir, en el backend y en cada solicitud, si un usuario puede ejecutar una acc
 |---|---|---|
 | D1 | Se hace primero B (política) y después A | La política consulta por puertos hechos que aún no existen y se prueba con dobles. |
 | D2 | Enfoque 1: núcleo de dominio puro + adaptadores finos | Sin dependencia de ASP.NET en el núcleo; reutilizable desde workers y reportes. |
-| D3 | El permiso explícito del tratante sobre episodios sensibles es un **indicador en `miembro_equipo`** | `SC-001`: campo nuevo en el módulo 05 y migración de Dev B. |
-| D4 | Asistente clínico = «solo lo necesario» + nota de la especialidad del episodio sin diagnósticos, **nunca en episodios sensibles** | `SC-001`: indicador de visibilidad por sección en las plantillas (módulo 12, ADR-006). |
+| D3 | El permiso explícito del tratante sobre episodios sensibles es un **indicador en `miembro_equipo`** | `SC-002`: campo nuevo en el módulo 05 y migración de Dev B. |
+| D4 | Asistente clínico = «solo lo necesario» + nota de la especialidad del episodio sin diagnósticos, **nunca en episodios sensibles** | `SC-002`: indicador de visibilidad por sección en las plantillas (módulo 12, ADR-006). |
 | D5 | El contrato público vive en `Continuum.Identidad`, no en `Shared` | `Shared` es contrato protegido; no se toca en este PR. |
-| D6 | Supuestos aprobados: (a) el miembro del equipo sin permiso no crea notas en episodios sensibles; (b) `RED_APOYO` denegado en todo en el MVP; (c) la habilitación solo condiciona escrituras; (d) el paciente solo tiene `Leer (P)` en citas | Ver §7 y `SC-001`. |
+| D6 | Supuestos aprobados: (a) el miembro del equipo sin permiso no crea notas en episodios sensibles; (b) `RED_APOYO` denegado en todo en el MVP; (c) la habilitación solo condiciona escrituras; (d) el paciente solo tiene `Leer (P)` en citas | Ver §7 y `SC-002`. |
 | D7 | `vigente_hasta` de una habilitación es el **último día válido**, inclusive, evaluado en la zona horaria de la sede | Añade el puerto `IZonaHorariaSede`. |
 | D8 | Falla cerrada: nada se concede si falta un hecho; si falla el registro de una denegación, la excepción se propaga | Ver §10. |
 
@@ -161,7 +161,7 @@ La **organización del actor** no viaja en la solicitud: la devuelve `IRolesPorS
 | R1 | `Contexto.OrganizacionId` debe ser la organización del actor (`RN-015`) | `NoEncontrado` · `OTRA_ORGANIZACION` |
 | R2 | Para **cada rol** del actor se busca la celda rol × recurso × acción (× alcance en reportes) | sin celda en ningún rol: `Prohibido` · `SIN_PERMISO_DE_ROL` |
 | R3 | `MismaSede`: si la celda lo exige, `Contexto.SedeId` debe ser la sede activa (`RN-002`) | `SEDE_DISTINTA`. Sin `SedeId` en el contexto: `DATOS_INSUFICIENTES` |
-| R4 | `Propio`: paciente → `Contexto.PacienteId` = vínculo del actor; profesional → `Contexto.ProfesionalId` = su `ProfesionalId` | `NO_ES_PROPIO` |
+| R4 | `Propio`: paciente → `Contexto.PacienteId` = vínculo del actor; profesional → `Contexto.ProfesionalId` = su `ProfesionalId`. `Guid.Empty` se trata como ausente | `NO_ES_PROPIO` |
 | R5 | `Liberado`: `Contexto.LiberadoAlPaciente` debe ser `true` | `NO_LIBERADO` |
 | R6 | `Relacion` (T): la relación vigente con el episodio o paciente debe ser `Tratante` o `Equipo` (`RN-001`) | `SIN_RELACION_CLINICA` |
 | R7 | Sensibilidad (`RN-016`), solo si el episodio es sensible (ver abajo) | `EPISODIO_SENSIBLE` |
@@ -212,7 +212,7 @@ Es la tabla del módulo 03 §4 más las ampliaciones marcadas con ★. Leyenda: 
 | `Global` | Director (Agregado) · Admin |
 | `Cumplimiento` | Auditor · Director (Agregado) · Admin |
 
-**Diferencias deliberadas respecto al módulo 03** (todas en `SC-001`):
+**Diferencias deliberadas respecto al módulo 03** (todas en `SC-002`):
 - `RED_APOYO`: denegado en todo (módulo 19 es Fase 3; los tutores de menores los define el módulo 08).
 - `Paciente × Cita`: solo `L [P]`. «Solicitar» es Fase 2 y confirmar o cancelar desde el portal no está en la matriz.
 - `Paciente × Bitacora`: denegado (el módulo 03 lo marca como Fase 2).
@@ -243,7 +243,7 @@ public sealed record EventoAutorizacion(
 ```
 
 - `Autorizador` registra **un evento por cada `Denegado`**. El puerto lo trata siempre como nivel **crítico**, resultado `denegado` (módulo 23 §2, «Seguridad», y `CA-AUD-003`).
-- El evento lleva solo identificadores y códigos. **Nunca** contenido clínico, nombres ni documentos de identidad.
+- El evento lleva solo identificadores y códigos. **Nunca** contenido clínico, nombres ni documentos de identidad. Los roles del evento son una copia del perfil: no cambian si el perfil se modifica después.
 - La IP, el agente y el `correlacion_id` los añade el adaptador de `Auditoria` desde la solicitud HTTP; la política no los ve.
 - El módulo `Auditoria` traduce `Recurso` + `Accion` al código del módulo 23 (por ejemplo `HCE.NOTA.VER`).
 - Los accesos **permitidos** los audita el módulo consumidor dentro de su propia transacción (`RF-AUD-008`). La política no controla esa transacción.
@@ -280,7 +280,7 @@ La vigencia `desde`/`hasta` de los miembros del equipo es responsabilidad de `IR
 
 ## 12. Interpretaciones adoptadas y puntos abiertos
 
-Cosas que la documentación no define y que esta spec resuelve de una forma concreta. Todas pasan a `SC-001` para que la documentación quede explícita.
+Cosas que la documentación no define y que esta spec resuelve de una forma concreta. Todas pasan a `SC-002` para que la documentación quede explícita.
 
 | # | Tema | Interpretación adoptada |
 |---|---|---|
@@ -297,4 +297,4 @@ Cosas que la documentación no define y que esta spec resuelve de una forma conc
 
 - **Los módulos consumidores proveen `OrganizacionId`, `SedeId` y demás datos del recurso.** La política confía en que sean los de la fila cargada. Mitigación: filtro por `organizacion_id` en todas las consultas (`RN-015`) y políticas por fila (ADR-004); la política es una defensa adicional.
 - **Hasta el tramo A y `HistoriaClinica`, los puertos solo existen como interfaces.** B se valida con dobles; la integración real llega con esos módulos.
-- **Migración y plantillas.** D3 y D4 dependen de `SC-001` aprobada y de una migración de Dev B antes de que `HistoriaClinica` persista el permiso sensible y el indicador de sección.
+- **Migración y plantillas.** D3 y D4 dependen de `SC-002` aprobada y de una migración de Dev B antes de que `HistoriaClinica` persista el permiso sensible y el indicador de sección.

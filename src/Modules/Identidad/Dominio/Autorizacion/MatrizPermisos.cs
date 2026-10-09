@@ -42,7 +42,8 @@ public static class MatrizPermisos
 
     static MatrizPermisos()
     {
-        Todos = Construir();
+        // Colección de solo lectura de verdad: un `Permiso[]` expuesto como IReadOnlyList se podría modificar con un cast.
+        Todos = Array.AsReadOnly(Construir());
         // ToDictionary falla al iniciar el tipo si alguna celda se declara dos veces.
         Indice = Todos.ToDictionary(p => (p.Rol, p.Recurso, p.Accion, p.Alcance));
     }
