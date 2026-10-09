@@ -61,7 +61,7 @@ Los repositorios en memoria (`Infraestructura/Memoria`) **no** están registrado
 
 ## Puntos abiertos (para decidir, no se asumieron)
 
-1. **Quitar el último `ADMIN_FUNCIONAL`** o que un administrador se desactive a sí mismo: hoy se permite. ¿Hace falta una regla de protección contra el bloqueo?
+1. **Último `ADMIN_FUNCIONAL`.** Decidido por Julian (2026-10-09): no se puede desactivar ni quitar el rol al último administrador activo de la organización (`ULTIMO_ADMINISTRADOR`). El rol de administrador principal con aprobación para desactivar a otros queda en `specs/SC-002-borrador-administrador-principal-y-aprobacion.md`, pendiente de aprobación del equipo.
 2. **El MFA de una cuenta depende de sus roles** (`RF-IAM-002`: todos menos `PACIENTE` y `RED_APOYO`), pero `requiere_mfa` se fija al crear. Las cuentas creadas por el administrador son de personal y lo exigen siempre.
 3. **Correo único entre organizaciones**: el índice es global, así que un administrador puede saber que un correo existe en otra organización al recibir `CORREO_DUPLICADO`.
 4. **Persistencia (Dev B):** tablas `rol_asignado`, `profesional` y `habilitacion` (incluida `avisada_para_vencimiento`) y la implementación de `IUnidadDeTrabajo` con la transacción de EF.

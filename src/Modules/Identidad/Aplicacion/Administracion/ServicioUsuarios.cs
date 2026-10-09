@@ -11,6 +11,7 @@ namespace Continuum.Identidad.Aplicacion.Administracion;
 public sealed class ServicioUsuarios(
     GuardiaAdministracion guardia,
     IRepositorioUsuarios usuarios,
+    IRepositorioRolesAsignados roles,
     IHasheadorContrasena hasheador,
     ServicioSesiones sesiones,
     IUnidadDeTrabajo unidadDeTrabajo,
@@ -68,7 +69,8 @@ public sealed class ServicioUsuarios(
 
     /// <summary>
     /// Desactiva la cuenta (no la elimina) y cierra todas sus sesiones: sin esto, un token de renovación ya emitido
-    /// seguiría funcionando. Repetir la operación no cambia nada ni duplica el evento.
+    /// seguiría funcionando. Repetir la operación no cambia nada ni duplica el evento. No permite desactivar al último
+    /// <c>ADMIN_FUNCIONAL</c> activo de la organización (<c>ULTIMO_ADMINISTRADOR</c>).
     /// </summary>
     public async Task<ResultadoOperacion> DesactivarAsync(ActorAdministracion actor, Guid usuarioId, CancellationToken ct = default)
     {
@@ -80,6 +82,11 @@ public sealed class ServicioUsuarios(
         if (usuario is null) return ResultadoOperacion.NoEncontrado();
         if (await guardia.VerificarOrganizacionAsync(actor, perfil, usuario.OrganizacionId, usuario.Id, ct) is { } ajena) return ajena;
         if (usuario.Estado == EstadoUsuario.Inactivo) return ResultadoOperacion.Exito(usuario.Id);
+
+        // Protección contra el bloqueo: la organización no se queda sin quien administre usuarios.
+        var administradores = await roles.ListarUsuariosActivosConRolAsync(usuario.OrganizacionId, Rol.AdminFuncional, ct);
+        if (administradores.Contains(usuario.Id) && administradores.All(id => id == usuario.Id))
+            return ResultadoOperacion.Conflicto("ULTIMO_ADMINISTRADOR");
 
         await unidadDeTrabajo.EjecutarAsync(async c =>
         {

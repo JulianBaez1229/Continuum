@@ -145,6 +145,40 @@ public class ServicioRolesTests
         Assert.Equal(EstadoOperacion.NoEncontrado, r.Estado);
     }
 
+    // ---- Protección contra quedarse sin administradores ----
+
+    [Fact]
+    public async Task RF_ROL_002_no_se_retira_el_ultimo_rol_admin_funcional_activo_de_la_organizacion()
+    {
+        var r = await _e.ServicioRoles.RetirarAsync(_e.Actor, _e.Administrador.Id, Rol.AdminFuncional, Sede);
+
+        Assert.Equal(EstadoOperacion.Conflicto, r.Estado);
+        Assert.Equal("ULTIMO_ADMINISTRADOR", r.Codigo);
+        Assert.Equal([Rol.AdminFuncional], (await _e.Roles.ListarDeUsuarioAsync(_e.Administrador.Id)).Select(x => x.Rol));
+        Assert.Empty(_e.Auditoria.Eventos);
+    }
+
+    [Fact]
+    public async Task RF_ROL_002_se_retira_el_rol_admin_si_el_usuario_lo_conserva_en_otra_sede()
+    {
+        await _e.ServicioRoles.AsignarAsync(_e.Actor, _e.Administrador.Id, Rol.AdminFuncional, SedeNorte);
+
+        var r = await _e.ServicioRoles.RetirarAsync(_e.Actor, _e.Administrador.Id, Rol.AdminFuncional, SedeNorte);
+
+        Assert.Equal(EstadoOperacion.Exitosa, r.Estado);
+    }
+
+    [Fact]
+    public async Task RF_ROL_002_se_retira_el_rol_admin_si_queda_otro_administrador_activo()
+    {
+        var otro = _e.SembrarUsuario("admin2@clinica.test");
+        _e.Roles.Sembrar(new RolAsignado(otro.Id, Rol.AdminFuncional, SedeNorte));
+
+        var r = await _e.ServicioRoles.RetirarAsync(_e.Actor, otro.Id, Rol.AdminFuncional, SedeNorte);
+
+        Assert.Equal(EstadoOperacion.Exitosa, r.Estado);
+    }
+
     // ---- Solo ADMIN_FUNCIONAL, RN-015 ----
 
     [Theory]

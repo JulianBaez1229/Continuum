@@ -7,6 +7,10 @@ namespace Continuum.Identidad.Aplicacion.Administracion;
 public interface IRepositorioRolesAsignados
 {
     Task<IReadOnlyList<RolAsignado>> ListarDeUsuarioAsync(Guid usuarioId, CancellationToken ct = default);
+
+    /// <summary>Usuarios <b>activos</b> de la organización que tienen el rol en al menos una sede.</summary>
+    Task<IReadOnlyList<Guid>> ListarUsuariosActivosConRolAsync(Guid organizacionId, Rol rol, CancellationToken ct = default);
+
     Task AgregarAsync(RolAsignado asignacion, CancellationToken ct = default);
     Task QuitarAsync(RolAsignado asignacion, CancellationToken ct = default);
 }

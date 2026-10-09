@@ -130,7 +130,7 @@ internal sealed class EntornoAdministracion
         var sesiones = new ServicioSesiones(Sesiones, politicaSesion, Reloj, AuditoriaIdentidad);
         var guardia = new GuardiaAdministracion(ConsultaRoles, Auditoria, Reloj);
 
-        ServicioUsuarios = new(guardia, Usuarios, new HasheadorFalso(), sesiones, UnidadDeTrabajo, Auditoria, Reloj);
+        ServicioUsuarios = new(guardia, Usuarios, Roles, new HasheadorFalso(), sesiones, UnidadDeTrabajo, Auditoria, Reloj);
         ServicioRoles = new(guardia, Usuarios, Roles, Sedes, UnidadDeTrabajo, Auditoria, Reloj);
         ServicioHabilitaciones = new(guardia, Usuarios, Profesionales, Habilitaciones, Catalogo,
             new ZonaHorariaFalsa(), UnidadDeTrabajo, Auditoria, Reloj);

@@ -41,6 +41,7 @@ public sealed class ServicioRoles(
         return ResultadoOperacion.Exito(usuario.Id);
     }
 
+    /// <summary>Retira el rol de la sede. No permite quitar el último <c>ADMIN_FUNCIONAL</c> activo (<c>ULTIMO_ADMINISTRADOR</c>).</summary>
     public async Task<ResultadoOperacion> RetirarAsync(
         ActorAdministracion actor, Guid usuarioId, Rol rol, Guid sedeId, CancellationToken ct = default)
     {
@@ -53,7 +54,16 @@ public sealed class ServicioRoles(
         if (await guardia.VerificarOrganizacionAsync(actor, perfil, usuario.OrganizacionId, usuario.Id, ct) is { } ajena) return ajena;
 
         var asignacion = new RolAsignado(usuario.Id, rol, sedeId);
-        if (!(await roles.ListarDeUsuarioAsync(usuario.Id, ct)).Contains(asignacion)) return ResultadoOperacion.NoEncontrado("ROL_NO_ASIGNADO");
+        var delUsuario = await roles.ListarDeUsuarioAsync(usuario.Id, ct);
+        if (!delUsuario.Contains(asignacion)) return ResultadoOperacion.NoEncontrado("ROL_NO_ASIGNADO");
+
+        // Protección contra el bloqueo: no se retira el último rol ADMIN_FUNCIONAL activo de la organización.
+        if (rol == Rol.AdminFuncional && usuario.Estado == EstadoUsuario.Activo
+            && !delUsuario.Any(r => r.Rol == Rol.AdminFuncional && r != asignacion))
+        {
+            var administradores = await roles.ListarUsuariosActivosConRolAsync(usuario.OrganizacionId, Rol.AdminFuncional, ct);
+            if (administradores.All(id => id == usuario.Id)) return ResultadoOperacion.Conflicto("ULTIMO_ADMINISTRADOR");
+        }
 
         await unidadDeTrabajo.EjecutarAsync(async c =>
         {

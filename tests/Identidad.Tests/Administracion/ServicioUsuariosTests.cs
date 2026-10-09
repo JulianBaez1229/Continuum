@@ -155,6 +155,49 @@ public class ServicioUsuariosTests
         Assert.Equal(EstadoOperacion.NoEncontrado, r.Estado);
     }
 
+    // ---- Protección contra quedarse sin administradores ----
+
+    private Usuario OtroAdministrador(string correo = "admin2@clinica.test", Guid? sede = null)
+    {
+        var u = _e.SembrarUsuario(correo);
+        _e.Roles.Sembrar(new RolAsignado(u.Id, Rol.AdminFuncional, sede ?? EntornoAdministracion.SedeNorte));
+        return u;
+    }
+
+    [Fact]
+    public async Task RF_ROL_001_no_se_puede_desactivar_al_ultimo_admin_funcional_ni_el_mismo_siendo_el_unico()
+    {
+        var r = await _e.ServicioUsuarios.DesactivarAsync(_e.Actor, _e.Administrador.Id);
+
+        Assert.Equal(EstadoOperacion.Conflicto, r.Estado);
+        Assert.Equal("ULTIMO_ADMINISTRADOR", r.Codigo);
+        Assert.Equal(EstadoUsuario.Activo, _e.Administrador.Estado);
+        Assert.Empty(_e.Auditoria.Eventos);
+    }
+
+    [Fact]
+    public async Task RF_ROL_001_se_puede_desactivar_a_un_admin_si_queda_otro_activo()
+    {
+        var otro = OtroAdministrador();
+
+        var r = await _e.ServicioUsuarios.DesactivarAsync(_e.Actor, otro.Id);
+
+        Assert.Equal(EstadoOperacion.Exitosa, r.Estado);
+        Assert.Equal(EstadoUsuario.Inactivo, otro.Estado);
+    }
+
+    [Fact]
+    public async Task RF_ROL_001_un_admin_inactivo_o_de_otra_organizacion_no_cuenta_como_respaldo()
+    {
+        OtroAdministrador().Desactivar();
+        var ajeno = _e.SembrarUsuario("admin@otra.test", EntornoAdministracion.OtraOrg);
+        _e.Roles.Sembrar(new RolAsignado(ajeno.Id, Rol.AdminFuncional, EntornoAdministracion.SedeAjena));
+
+        var r = await _e.ServicioUsuarios.DesactivarAsync(_e.Actor, _e.Administrador.Id);
+
+        Assert.Equal("ULTIMO_ADMINISTRADOR", r.Codigo);
+    }
+
     // ---- Solo ADMIN_FUNCIONAL ----
 
     [Theory]
