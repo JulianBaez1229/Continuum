@@ -15,10 +15,14 @@ public enum EstadoInicioSesion
     SesionExpirada,
 }
 
+/// <summary>Cómo se entrega el segundo factor, para que el cliente muestre la pantalla adecuada.</summary>
+public enum MetodoSegundoFactor { Totp, CodigoPorMensaje }
+
 public sealed record ResultadoInicioSesion(
     EstadoInicioSesion Estado,
     Guid? UsuarioId = null,
-    DateTimeOffset? BloqueadoHasta = null);
+    DateTimeOffset? BloqueadoHasta = null,
+    MetodoSegundoFactor? Metodo = null);
 
 /// <summary>
 /// Primer factor (RF-IAM-001) con bloqueo temporal (RF-IAM-004) y bitácora (RF-IAM-009).
@@ -64,10 +68,14 @@ public sealed class ServicioInicioSesion(
         // de lo contrario, quien conozca la clave podría adivinar el código TOTP sin límite.
         if (usuario.RequiereMfa)
         {
-            return new(usuario.MfaHabilitado
-                ? EstadoInicioSesion.RequiereSegundoFactor
-                : EstadoInicioSesion.RequiereConfiguracionMfa, usuario.Id);
+            return usuario.MfaHabilitado
+                ? new(EstadoInicioSesion.RequiereSegundoFactor, usuario.Id, Metodo: MetodoSegundoFactor.Totp)
+                : new(EstadoInicioSesion.RequiereConfiguracionMfa, usuario.Id);
         }
+
+        // Segundo factor opcional del paciente (RF-IAM-003): el código lo envía ServicioAutenticacion.
+        if (usuario.MfaPorMensajeHabilitado)
+            return new(EstadoInicioSesion.RequiereSegundoFactor, usuario.Id, Metodo: MetodoSegundoFactor.CodigoPorMensaje);
 
         usuario.RegistrarExito(ahora);
         await usuarios.GuardarAsync(usuario, ct);

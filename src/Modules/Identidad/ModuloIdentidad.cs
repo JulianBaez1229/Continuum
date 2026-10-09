@@ -88,6 +88,7 @@ public static class ModuloIdentidad
         servicios.AddSingleton<IAuthorizationHandler, ReautenticacionRecienteHandler>();
         servicios.AddSingleton<IAuthorizationMiddlewareResultHandler, ResultadoAutorizacionIdentidad>();
         servicios.AddScoped<ServicioReautenticacion>();
+        servicios.AddScoped<ServicioMfaPorMensaje>();
 
         servicios.AddControllers().AddApplicationPart(typeof(AuthController).Assembly);
         return servicios;
