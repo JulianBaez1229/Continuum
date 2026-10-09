@@ -106,9 +106,41 @@ public static class PoliticaAcceso
                     return Denegado(rol, Etapa.Sensibilidad, MotivoDenegacion.EpisodioSensible);
                 nivel = nivelSensible;
             }
+
+            // R8 (RN-012): la escritura clínica del profesional exige habilitación vigente.
+            if (ExigeHabilitacion(rol, accion, recurso)
+                && MotivoDeHabilitacion(hechos.Habilitacion, relacion, contexto, hechos.HoyEnSede) is { } motivoHabilitacion)
+                return Denegado(rol, Etapa.Habilitacion, motivoHabilitacion);
         }
 
         return new ResultadoRol(rol, Decision.Permitir(nivel), Etapa.Concedido);
+    }
+
+    /// <summary>
+    /// R8 (RN-012): solo el rol <see cref="Rol.Profesional"/> necesita habilitación, y solo para crear, actualizar o
+    /// anular notas clínicas y órdenes. Firmar una nota es <see cref="Accion.Crear"/> (spec §12, I3). Las lecturas
+    /// y los demás roles nunca la necesitan.
+    /// </summary>
+    private static bool ExigeHabilitacion(Rol rol, Accion accion, TipoRecurso recurso) =>
+        rol == Rol.Profesional
+        && (accion is Accion.Crear or Accion.Actualizar or Accion.Anular)
+        && (recurso is TipoRecurso.NotaClinica or TipoRecurso.Orden);
+
+    /// <summary>
+    /// R8 (RN-012): motivo por el que la habilitación no basta para escribir, o <c>null</c> si basta. Orden de
+    /// comprobación: sin habilitación, de otra especialidad que la del episodio, o con el procedimiento informado
+    /// fuera de su lista (<see cref="MotivoDenegacion.SinHabilitacion"/>); y solo después el vencimiento.
+    /// <see cref="HabilitacionProfesional.VigenteHasta"/> es el último día válido, inclusive: la licencia que vence
+    /// hoy sigue vigente hoy (CA-ROL-003).
+    /// </summary>
+    private static MotivoDenegacion? MotivoDeHabilitacion(
+        HabilitacionProfesional? habilitacion, RelacionClinica relacion, ContextoRecurso contexto, DateOnly hoyEnSede)
+    {
+        if (habilitacion is null || habilitacion.EspecialidadId != relacion.EspecialidadId)
+            return MotivoDenegacion.SinHabilitacion;
+        if (contexto.ProcedimientoId is { } procedimiento && !habilitacion.ProcedimientosPermitidos.Contains(procedimiento))
+            return MotivoDenegacion.SinHabilitacion;
+        return hoyEnSede > habilitacion.VigenteHasta ? MotivoDenegacion.HabilitacionVencida : null;
     }
 
     /// <summary>

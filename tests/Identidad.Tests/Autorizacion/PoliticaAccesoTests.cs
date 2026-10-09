@@ -15,6 +15,10 @@ public class PoliticaAccesoTests
     private static readonly Guid OtroPaciente = Guid.Parse("00000000-0000-0000-0000-0000000000e2");
     private static readonly Guid Episodio = Guid.Parse("00000000-0000-0000-0000-0000000000f1");
     private static readonly Guid Especialidad = Guid.Parse("00000000-0000-0000-0000-000000000051");
+    private static readonly Guid OtraEspecialidad = Guid.Parse("00000000-0000-0000-0000-000000000052");
+    private static readonly Guid Procedimiento = Guid.Parse("00000000-0000-0000-0000-000000000061");
+    private static readonly Guid OtroProcedimiento = Guid.Parse("00000000-0000-0000-0000-000000000062");
+    private static readonly DateOnly Hoy = new(2026, 10, 9), Ayer = new(2026, 10, 8);
 
     /// <summary>Habilitación vigente en <see cref="Especialidad"/>, sin lista de procedimientos.</summary>
     private static readonly HabilitacionProfesional HabilitacionVigente = new(Especialidad, new HashSet<Guid>(), new DateOnly(2027, 1, 1));
@@ -60,6 +64,14 @@ public class PoliticaAccesoTests
     /// <summary>Asistente clínico con ficha de profesional: sin ella no puede tener relación con el paciente (R6).</summary>
     private static HechosAcceso Asistente(RelacionClinica? relacion) =>
         Hechos([Rol.AsistenteClinico], profesionalId: ProfesionalActor, relacion: relacion);
+
+    /// <summary>Profesional con la habilitación indicada (o ninguna); «hoy» es 2026-10-09 salvo que se indique otra fecha.</summary>
+    private static HechosAcceso ProfesionalCon(RelacionClinica? relacion, HabilitacionProfesional? habilitacion, DateOnly? hoy = null) =>
+        Hechos([Rol.Profesional], profesionalId: ProfesionalActor, relacion: relacion, hab: habilitacion, hoy: hoy);
+
+    /// <summary>Habilitación en <see cref="Especialidad"/> (o la indicada) para los procedimientos dados, vigente hasta la fecha dada inclusive.</summary>
+    private static HabilitacionProfesional Habilitacion(DateOnly vigenteHasta, Guid? especialidad = null, params Guid[] procedimientos) =>
+        new(especialidad ?? Especialidad, procedimientos.ToHashSet(), vigenteHasta);
 
     private static Decision Prohibido(MotivoDenegacion motivo) => Decision.Denegar(TipoDenegacion.Prohibido, motivo);
 
@@ -589,5 +601,287 @@ public class PoliticaAccesoTests
             Prohibido(MotivoDenegacion.SinRelacionClinica),
             PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio,
                 Hechos([Rol.Paciente, Rol.Profesional], profesionalId: ProfesionalActor, relacion: Rel(TipoRelacion.Ninguna))));
+    }
+
+    // ---- R8: habilitación profesional (RN-012) ----
+
+    [Fact]
+    public void CA_ROL_003_licencia_vencida_ayer_impide_firmar_nota_con_motivo()
+    {
+        // Firmar una nota es Crear (spec §12, I3).
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.HabilitacionVencida),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.NotaClinica, CtxDeEpisodio,
+                ProfesionalCon(Rel(TipoRelacion.Tratante), Habilitacion(vigenteHasta: Ayer))));
+    }
+
+    [Fact]
+    public void CA_ROL_003_licencia_que_vence_hoy_sigue_vigente()
+    {
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.NotaClinica, CtxDeEpisodio,
+                ProfesionalCon(Rel(TipoRelacion.Tratante), Habilitacion(vigenteHasta: Hoy))));
+    }
+
+    [Fact]
+    public void CA_ROL_003_el_vencimiento_se_mide_con_la_fecha_de_hoy_en_la_sede()
+    {
+        var habilitacion = Habilitacion(vigenteHasta: Hoy);
+        var tratante = Rel(TipoRelacion.Tratante);
+
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.NotaClinica, CtxDeEpisodio, ProfesionalCon(tratante, habilitacion, hoy: Hoy)));
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.HabilitacionVencida),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.NotaClinica, CtxDeEpisodio, ProfesionalCon(tratante, habilitacion, hoy: Hoy.AddDays(1))));
+        // Una fecha anterior a la del vencimiento sigue siendo vigente.
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.NotaClinica, CtxDeEpisodio, ProfesionalCon(tratante, habilitacion, hoy: Ayer)));
+    }
+
+    [Fact]
+    public void RN_012_sin_habilitacion_en_la_especialidad()
+    {
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinHabilitacion),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.NotaClinica, CtxDeEpisodio,
+                ProfesionalCon(Rel(TipoRelacion.Tratante), habilitacion: null)));
+    }
+
+    [Fact]
+    public void RN_012_habilitacion_de_otra_especialidad_no_sirve()
+    {
+        // Vigente y con la fecha correcta, pero en una especialidad distinta a la del episodio.
+        var deOtraEspecialidad = Habilitacion(new DateOnly(2027, 1, 1), especialidad: OtraEspecialidad);
+
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinHabilitacion),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.NotaClinica, CtxDeEpisodio,
+                ProfesionalCon(Rel(TipoRelacion.Tratante), deOtraEspecialidad)));
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinHabilitacion),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.Orden, CtxDeEpisodio,
+                ProfesionalCon(Rel(TipoRelacion.Equipo), deOtraEspecialidad)));
+    }
+
+    [Fact]
+    public void RN_012_procedimiento_fuera_de_la_lista_se_deniega()
+    {
+        var habilitacion = Habilitacion(new DateOnly(2027, 1, 1), procedimientos: [Procedimiento]);
+
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinHabilitacion),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.Orden, Ctx(paciente: OtroPaciente, episodio: Episodio, procedimiento: OtroProcedimiento),
+                ProfesionalCon(Rel(TipoRelacion.Tratante), habilitacion)));
+    }
+
+    [Fact]
+    public void RN_012_procedimiento_dentro_de_la_lista_se_concede()
+    {
+        var habilitacion = Habilitacion(new DateOnly(2027, 1, 1), procedimientos: [OtroProcedimiento, Procedimiento]);
+
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.Orden, Ctx(paciente: OtroPaciente, episodio: Episodio, procedimiento: Procedimiento),
+                ProfesionalCon(Rel(TipoRelacion.Tratante), habilitacion)));
+    }
+
+    [Fact]
+    public void RN_012_lista_vacia_con_procedimiento_informado_se_deniega()
+    {
+        // Lista vacía: la habilitación no cubre ningún procedimiento concreto.
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinHabilitacion),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.Orden, Ctx(paciente: OtroPaciente, episodio: Episodio, procedimiento: Procedimiento),
+                ProfesionalCon(Rel(TipoRelacion.Tratante), Habilitacion(new DateOnly(2027, 1, 1)))));
+    }
+
+    [Fact]
+    public void RN_012_sin_procedimiento_en_el_contexto_solo_valida_especialidad_y_vigencia()
+    {
+        var tratante = Rel(TipoRelacion.Tratante);
+
+        // Con lista vacía y con una lista que no incluye nada en particular: sin procedimiento informado no se mira la lista.
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.Orden, CtxDeEpisodio,
+                ProfesionalCon(tratante, Habilitacion(new DateOnly(2027, 1, 1)))));
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.Orden, CtxDeEpisodio,
+                ProfesionalCon(tratante, Habilitacion(new DateOnly(2027, 1, 1), procedimientos: [OtroProcedimiento]))));
+    }
+
+    [Fact]
+    public void RN_012_sin_habilitacion_se_evalua_antes_que_el_vencimiento()
+    {
+        var vencida = Habilitacion(vigenteHasta: Ayer, procedimientos: [OtroProcedimiento]);
+        var vencidaDeOtraEspecialidad = Habilitacion(vigenteHasta: Ayer, especialidad: OtraEspecialidad);
+
+        // Vencida y con el procedimiento fuera de la lista: gana SIN_HABILITACION.
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinHabilitacion),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.Orden, Ctx(paciente: OtroPaciente, episodio: Episodio, procedimiento: Procedimiento),
+                ProfesionalCon(Rel(TipoRelacion.Tratante), vencida)));
+        // Vencida y de otra especialidad: gana SIN_HABILITACION.
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinHabilitacion),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.NotaClinica, CtxDeEpisodio,
+                ProfesionalCon(Rel(TipoRelacion.Tratante), vencidaDeOtraEspecialidad)));
+        // Vencida pero de la especialidad y con el procedimiento en la lista: solo queda el vencimiento.
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.HabilitacionVencida),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.Orden, Ctx(paciente: OtroPaciente, episodio: Episodio, procedimiento: OtroProcedimiento),
+                ProfesionalCon(Rel(TipoRelacion.Tratante), vencida)));
+    }
+
+    [Fact]
+    public void RN_012_crear_orden_con_licencia_vencida_se_deniega()
+    {
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.HabilitacionVencida),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.Orden, CtxDeEpisodio,
+                ProfesionalCon(Rel(TipoRelacion.Tratante), Habilitacion(vigenteHasta: Ayer))));
+    }
+
+    [Fact]
+    public void RN_012_anular_una_orden_con_licencia_vencida_se_deniega()
+    {
+        var vencida = Habilitacion(vigenteHasta: Ayer);
+
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.HabilitacionVencida),
+            PoliticaAcceso.Evaluar(Accion.Anular, TipoRecurso.Orden, CtxDeEpisodio, ProfesionalCon(Rel(TipoRelacion.Tratante), vencida)));
+        // Anular exige lo mismo que crear: también sin habilitación.
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinHabilitacion),
+            PoliticaAcceso.Evaluar(Accion.Anular, TipoRecurso.Orden, CtxDeEpisodio, ProfesionalCon(Rel(TipoRelacion.Tratante), habilitacion: null)));
+        // Y con licencia que vence hoy se concede.
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Anular, TipoRecurso.Orden, CtxDeEpisodio,
+                ProfesionalCon(Rel(TipoRelacion.Tratante), Habilitacion(vigenteHasta: Hoy))));
+    }
+
+    [Fact]
+    public void RN_012_la_lectura_no_exige_habilitacion()
+    {
+        var tratante = Rel(TipoRelacion.Tratante);
+        var vencida = Habilitacion(vigenteHasta: Ayer);
+
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio, ProfesionalCon(tratante, vencida)));
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio, ProfesionalCon(tratante, habilitacion: null)));
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.Orden, CtxDeEpisodio, ProfesionalCon(tratante, habilitacion: null)));
+    }
+
+    [Fact]
+    public void RN_012_el_asistente_no_necesita_habilitacion()
+    {
+        var asistente = Asistente(Rel(TipoRelacion.Equipo));
+
+        Assert.Null(asistente.Habilitacion);
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.SignosVitalesTriaje, CtxDeEpisodio, asistente));
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Actualizar, TipoRecurso.SignosVitalesTriaje, CtxDeEpisodio, asistente));
+
+        // Con ambos roles y sin habilitación, el asistente concede los signos vitales; el profesional no los escribe.
+        var ambosRoles = Hechos([Rol.Profesional, Rol.AsistenteClinico], profesionalId: ProfesionalActor, relacion: Rel(TipoRelacion.Equipo));
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.SignosVitalesTriaje, CtxDeEpisodio, ambosRoles));
+    }
+
+    [Fact]
+    public void RN_012_ser_tambien_asistente_no_evita_la_habilitacion_en_notas_y_ordenes()
+    {
+        // El asistente no tiene celda de escritura en la nota ni en la orden: la denegación del rol Profesional se mantiene.
+        var ambosRoles = Hechos([Rol.Profesional, Rol.AsistenteClinico], profesionalId: ProfesionalActor,
+            relacion: Rel(TipoRelacion.Tratante), hab: Habilitacion(vigenteHasta: Ayer));
+
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.HabilitacionVencida),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.NotaClinica, CtxDeEpisodio, ambosRoles));
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.HabilitacionVencida),
+            PoliticaAcceso.Evaluar(Accion.Anular, TipoRecurso.Orden, CtxDeEpisodio, ambosRoles));
+    }
+
+    [Fact]
+    public void RN_012_la_habilitacion_no_se_exige_en_escrituras_de_otros_recursos()
+    {
+        // AsignacionFormulario y Mensaje también son escrituras del profesional con [T], pero R8 solo cubre nota y orden.
+        var tratanteSinHabilitacion = ProfesionalCon(Rel(TipoRelacion.Tratante), habilitacion: null);
+
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.AsignacionFormulario, Ctx(paciente: OtroPaciente), tratanteSinHabilitacion));
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.Mensaje, Ctx(paciente: OtroPaciente), tratanteSinHabilitacion));
+    }
+
+    [Fact]
+    public void RN_012_sin_relacion_clinica_se_deniega_antes_que_por_habilitacion()
+    {
+        var vencida = Habilitacion(vigenteHasta: Ayer);
+
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinRelacionClinica),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.NotaClinica, CtxDeEpisodio, ProfesionalCon(Rel(TipoRelacion.Ninguna), vencida)));
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinRelacionClinica),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.NotaClinica, CtxDeEpisodio, ProfesionalCon(Rel(TipoRelacion.Ninguna), habilitacion: null)));
+        // Sin relación consultada, tampoco se llega a la habilitación.
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.DatosInsuficientes),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.NotaClinica, CtxDeEpisodio, ProfesionalCon(relacion: null, vencida)));
+    }
+
+    [Fact]
+    public void RN_012_la_sensibilidad_se_evalua_antes_que_la_habilitacion()
+    {
+        var vencida = Habilitacion(vigenteHasta: Ayer);
+
+        // Equipo sin permiso en un episodio sensible: R7 lo niega antes de mirar la licencia.
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.EpisodioSensible),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.NotaClinica, CtxDeEpisodio,
+                ProfesionalCon(Rel(TipoRelacion.Equipo, permiteSensible: false, episodioSensible: true), vencida)));
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.EpisodioSensible),
+            PoliticaAcceso.Evaluar(Accion.Anular, TipoRecurso.Orden, CtxDeEpisodio,
+                ProfesionalCon(Rel(TipoRelacion.Equipo, permiteSensible: false, episodioSensible: true), habilitacion: null)));
+        // El tratante sí supera R7 en ese episodio, y entonces la licencia vencida lo detiene.
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.HabilitacionVencida),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.NotaClinica, CtxDeEpisodio,
+                ProfesionalCon(Rel(TipoRelacion.Tratante, permiteSensible: false, episodioSensible: true), vencida)));
+    }
+
+    [Fact]
+    public void RN_012_la_habilitacion_exigida_es_la_de_la_especialidad_de_la_relacion()
+    {
+        // La misma habilitación sirve o no según la especialidad del episodio.
+        var enOtraEspecialidad = Habilitacion(new DateOnly(2027, 1, 1), especialidad: OtraEspecialidad);
+        var relacionEnOtraEspecialidad = new RelacionClinica(TipoRelacion.Tratante, PermiteSensible: false, EpisodioSensible: false, OtraEspecialidad);
+
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.NotaClinica, CtxDeEpisodio, ProfesionalCon(relacionEnOtraEspecialidad, enOtraEspecialidad)));
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinHabilitacion),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.NotaClinica, CtxDeEpisodio, ProfesionalCon(Rel(TipoRelacion.Tratante), enOtraEspecialidad)));
     }
 }
