@@ -17,7 +17,7 @@ public static class PoliticaAcceso
     private enum Etapa
     {
         Celda,          // R2
-        Sede,           // R3
+        Sede,           // R3, y la falta de episodio en recursos de episodio
         Propio,         // R4
         Liberado,       // R5
         Relacion,       // R6
@@ -47,6 +47,13 @@ public static class PoliticaAcceso
         return Combinar(hechos.Actor.Roles.Select(rol => EvaluarRol(rol, accion, recurso, contexto, hechos)));
     }
 
+    /// <summary>
+    /// Recursos que pertenecen a un episodio de atención: exigen <see cref="ContextoRecurso.EpisodioId"/>
+    /// y están sujetos a la sensibilidad del episodio (R7, RN-016).
+    /// </summary>
+    public static bool EsDeEpisodio(TipoRecurso recurso) =>
+        recurso is TipoRecurso.NotaClinica or TipoRecurso.Orden or TipoRecurso.SignosVitalesTriaje;
+
     /// <summary>Evalúa un rol por las etapas R2 en adelante y se detiene en la primera condición que no se cumple.</summary>
     private static ResultadoRol EvaluarRol(Rol rol, Accion accion, TipoRecurso recurso, ContextoRecurso contexto, HechosAcceso hechos)
     {
@@ -56,7 +63,13 @@ public static class PoliticaAcceso
         if (celda is null)
             return Denegado(rol, Etapa.Celda, MotivoDenegacion.SinPermisoDeRol);
 
+        // El episodio es obligatorio en los recursos de episodio, sea cual sea el rol (spec §5 y §10).
+        // Tiene el mismo rango que R3: la celda existe, pero falta un dato del contexto para seguir.
+        if (EsDeEpisodio(recurso) && contexto.EpisodioId is null)
+            return Denegado(rol, Etapa.Sede, MotivoDenegacion.DatosInsuficientes);
+
         var condiciones = celda.Condiciones;
+        var nivel = celda.Nivel;
 
         // R3 (RN-002): el recurso debe pertenecer a la sede activa.
         if (condiciones.HasFlag(Condiciones.MismaSede))
@@ -75,11 +88,41 @@ public static class PoliticaAcceso
         if (condiciones.HasFlag(Condiciones.Liberado) && contexto.LiberadoAlPaciente != true)
             return Denegado(rol, Etapa.Liberado, MotivoDenegacion.NoLiberado);
 
-        // Provisional (Task 4): R6 aún no evalúa la relación clínica, así que toda celda [T] se deniega.
         if (condiciones.HasFlag(Condiciones.RelacionClinica))
-            return Denegado(rol, Etapa.Relacion, MotivoDenegacion.SinRelacionClinica);
+        {
+            // R6 (RN-001): el actor debe ser tratante o miembro del equipo del paciente.
+            // Sin ficha de profesional no puede tener relación, y no hace falta mirar los hechos.
+            if (hechos.Actor.ProfesionalId is null)
+                return Denegado(rol, Etapa.Relacion, MotivoDenegacion.SinRelacionClinica);
+            if (hechos.Relacion is not { } relacion)
+                return Denegado(rol, Etapa.Relacion, MotivoDenegacion.DatosInsuficientes);
+            if (relacion.Tipo is not (TipoRelacion.Tratante or TipoRelacion.Equipo))
+                return Denegado(rol, Etapa.Relacion, MotivoDenegacion.SinRelacionClinica);
 
-        return new ResultadoRol(rol, Decision.Permitir(celda.Nivel), Etapa.Concedido);
+            // R7 (RN-016): en un episodio sensible el nivel puede reducirse o negarse.
+            if (EsDeEpisodio(recurso) && relacion.EpisodioSensible)
+            {
+                if (NivelEnEpisodioSensible(rol, relacion, accion, recurso, nivel) is not { } nivelSensible)
+                    return Denegado(rol, Etapa.Sensibilidad, MotivoDenegacion.EpisodioSensible);
+                nivel = nivelSensible;
+            }
+        }
+
+        return new ResultadoRol(rol, Decision.Permitir(nivel), Etapa.Concedido);
+    }
+
+    /// <summary>
+    /// R7 (RN-016): nivel con que un actor con relación clínica (ya validada en R6) accede a un recurso de un
+    /// episodio sensible, o <c>null</c> si no accede. El asistente nunca accede. El tratante y el equipo con
+    /// permiso sensible conservan el nivel de la celda. El equipo sin permiso solo lee la nota, en resumen.
+    /// </summary>
+    private static NivelAcceso? NivelEnEpisodioSensible(Rol rol, RelacionClinica relacion, Accion accion, TipoRecurso recurso, NivelAcceso nivelDeCelda)
+    {
+        if (rol == Rol.AsistenteClinico)
+            return null;
+        if (relacion.Tipo == TipoRelacion.Tratante || relacion.PermiteSensible)
+            return nivelDeCelda;
+        return recurso == TipoRecurso.NotaClinica && accion == Accion.Leer ? NivelAcceso.Resumen : null;
     }
 
     /// <summary>

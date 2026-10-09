@@ -14,6 +14,10 @@ public class PoliticaAccesoTests
     private static readonly Guid PacienteActor = Guid.Parse("00000000-0000-0000-0000-0000000000e1");
     private static readonly Guid OtroPaciente = Guid.Parse("00000000-0000-0000-0000-0000000000e2");
     private static readonly Guid Episodio = Guid.Parse("00000000-0000-0000-0000-0000000000f1");
+    private static readonly Guid Especialidad = Guid.Parse("00000000-0000-0000-0000-000000000051");
+
+    /// <summary>Habilitación vigente en <see cref="Especialidad"/>, sin lista de procedimientos.</summary>
+    private static readonly HabilitacionProfesional HabilitacionVigente = new(Especialidad, new HashSet<Guid>(), new DateOnly(2027, 1, 1));
 
     /// <summary>Hechos del actor. Por defecto: organización <see cref="Org"/>, sede activa <see cref="Sede"/> y hoy 2026-10-09.</summary>
     private static HechosAcceso Hechos(Rol[] roles, Guid? profesionalId = null, Guid? pacienteDelActor = null,
@@ -38,6 +42,26 @@ public class PoliticaAccesoTests
             ProcedimientoId: procedimiento,
             LiberadoAlPaciente: liberado,
             AlcanceReporte: alcance);
+
+    /// <summary>Contexto de un recurso de episodio de un paciente que no es del actor.</summary>
+    private static ContextoRecurso CtxDeEpisodio => Ctx(paciente: OtroPaciente, episodio: Episodio);
+
+    /// <summary>Relación del actor con el paciente. Por defecto el miembro no tiene permiso sensible y el episodio no es sensible.</summary>
+    private static RelacionClinica Rel(TipoRelacion tipo, bool permiteSensible = false, bool episodioSensible = false) =>
+        new(tipo, permiteSensible, episodioSensible, Especialidad);
+
+    /// <summary>
+    /// Profesional con ficha y habilitación vigente. Estas pruebas verifican la relación y la sensibilidad (R6–R7);
+    /// la habilitación (R8) que exigen las escrituras queda cubierta para que no interfiera.
+    /// </summary>
+    private static HechosAcceso Profesional(RelacionClinica? relacion) =>
+        Hechos([Rol.Profesional], profesionalId: ProfesionalActor, relacion: relacion, hab: HabilitacionVigente);
+
+    /// <summary>Asistente clínico con ficha de profesional: sin ella no puede tener relación con el paciente (R6).</summary>
+    private static HechosAcceso Asistente(RelacionClinica? relacion) =>
+        Hechos([Rol.AsistenteClinico], profesionalId: ProfesionalActor, relacion: relacion);
+
+    private static Decision Prohibido(MotivoDenegacion motivo) => Decision.Denegar(TipoDenegacion.Prohibido, motivo);
 
     [Fact]
     public void CA_ROL_001_recepcion_ve_demograficos_y_citas_pero_no_notas_diagnosticos_ni_ordenes()
@@ -266,5 +290,304 @@ public class PoliticaAccesoTests
         Assert.Equal(
             sinPermiso,
             PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.Reporte, Ctx(alcance: (AlcanceReporte)99), Hechos([Rol.Director])));
+    }
+
+    // ---- R6: relación clínica (RN-001) ----
+
+    [Fact]
+    public void RN_001_tratante_lee_la_nota_de_su_episodio_completa()
+    {
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio, Profesional(Rel(TipoRelacion.Tratante))));
+    }
+
+    [Fact]
+    public void RN_001_miembro_del_equipo_lee_nota_no_sensible_completa()
+    {
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio, Profesional(Rel(TipoRelacion.Equipo))));
+    }
+
+    [Fact]
+    public void RN_001_profesional_sin_relacion_no_lee_la_nota()
+    {
+        var sinRelacion = Prohibido(MotivoDenegacion.SinRelacionClinica);
+
+        Assert.Equal(
+            sinRelacion,
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio, Profesional(Rel(TipoRelacion.Ninguna))));
+        // R6 va antes que R7: el permiso sensible no sustituye a la relación.
+        Assert.Equal(
+            sinRelacion,
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio,
+                Profesional(Rel(TipoRelacion.Ninguna, permiteSensible: true, episodioSensible: true))));
+    }
+
+    [Fact]
+    public void CA_ROL_002_cardiologo_ajeno_ve_demograficos_pero_no_notas_de_psicologia()
+    {
+        var cardiologoAjeno = Profesional(Rel(TipoRelacion.Ninguna));
+
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.DatosDemograficos, Ctx(paciente: OtroPaciente), cardiologoAjeno));
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinRelacionClinica),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio, cardiologoAjeno));
+    }
+
+    [Fact]
+    public void RF_ROL_005_profesional_sin_ficha_en_recurso_con_relacion_es_sin_relacion_clinica()
+    {
+        var sinFicha = Hechos([Rol.Profesional], relacion: Rel(TipoRelacion.Tratante));
+
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinRelacionClinica),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio, sinFicha));
+        // Sin consultar la relación: aunque falte, el motivo sigue siendo la ausencia de ficha.
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinRelacionClinica),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio, Hechos([Rol.Profesional], relacion: null)));
+        // También en recursos de paciente, que no llevan episodio.
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinRelacionClinica),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.ResumenSeguridad, Ctx(paciente: OtroPaciente), sinFicha));
+    }
+
+    [Fact]
+    public void RF_ROL_005_recurso_de_episodio_sin_episodio_o_con_relacion_nula_es_datos_insuficientes()
+    {
+        var datosInsuficientes = Prohibido(MotivoDenegacion.DatosInsuficientes);
+
+        // Sin EpisodioId en un recurso de episodio.
+        Assert.Equal(
+            datosInsuficientes,
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, Ctx(paciente: OtroPaciente),
+                Profesional(Rel(TipoRelacion.Tratante))));
+        // Relación nula: el puerto no la encontró.
+        Assert.Equal(
+            datosInsuficientes,
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio, Profesional(null)));
+        Assert.Equal(
+            datosInsuficientes,
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.ResumenSeguridad, Ctx(paciente: OtroPaciente), Profesional(null)));
+        Assert.Equal(
+            datosInsuficientes,
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.SignosVitalesTriaje, CtxDeEpisodio, Asistente(null)));
+    }
+
+    [Fact]
+    public void RF_ROL_005_recurso_de_episodio_sin_episodio_es_datos_insuficientes_para_cualquier_rol()
+    {
+        var datosInsuficientes = Prohibido(MotivoDenegacion.DatosInsuficientes);
+
+        // Paciente: la celda no exige relación, pero la orden pertenece a un episodio.
+        Assert.Equal(
+            datosInsuficientes,
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.Orden, Ctx(paciente: PacienteActor, liberado: true),
+                Hechos([Rol.Paciente], pacienteDelActor: PacienteActor)));
+        // Asistente con relación presente pero sin episodio.
+        Assert.Equal(
+            datosInsuficientes,
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.SignosVitalesTriaje, Ctx(paciente: OtroPaciente),
+                Asistente(Rel(TipoRelacion.Equipo))));
+        // Sin celda no hay nada que completar: sigue siendo SIN_PERMISO_DE_ROL.
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinPermisoDeRol),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, Ctx(paciente: OtroPaciente), Hechos([Rol.Recepcion])));
+        // Con varios roles, faltar el episodio (rango de R3) llega más lejos que no tener celda (R2),
+        // aunque el rol sin celda (Paciente) tenga el menor valor de Rol.
+        Assert.Equal(
+            datosInsuficientes,
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, Ctx(paciente: OtroPaciente),
+                Hechos([Rol.Paciente, Rol.Profesional], profesionalId: ProfesionalActor, relacion: Rel(TipoRelacion.Tratante))));
+    }
+
+    [Fact]
+    public void RF_ROL_005_tipo_de_relacion_fuera_de_rango_se_deniega_sin_excepcion()
+    {
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinRelacionClinica),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio,
+                Profesional(Rel((TipoRelacion)99, permiteSensible: true))));
+    }
+
+    [Fact]
+    public void RN_016_solo_nota_orden_y_signos_vitales_son_recursos_de_episodio()
+    {
+        Assert.Equal(
+            [TipoRecurso.NotaClinica, TipoRecurso.SignosVitalesTriaje, TipoRecurso.Orden],
+            Enum.GetValues<TipoRecurso>().Where(PoliticaAcceso.EsDeEpisodio));
+        Assert.False(PoliticaAcceso.EsDeEpisodio((TipoRecurso)99));
+    }
+
+    // ---- R7: sensibilidad (RN-016) ----
+
+    /// <summary>Celdas del profesional sobre recursos de episodio; se usan con el permiso o sin él.</summary>
+    public static TheoryData<Accion, TipoRecurso> CeldasDeEpisodioDelProfesional => new()
+    {
+        { Accion.Leer, TipoRecurso.NotaClinica },
+        { Accion.Crear, TipoRecurso.NotaClinica },
+        { Accion.Leer, TipoRecurso.Orden },
+        { Accion.Crear, TipoRecurso.Orden },
+        { Accion.Anular, TipoRecurso.Orden },
+        { Accion.Leer, TipoRecurso.SignosVitalesTriaje }
+    };
+
+    [Fact]
+    public void RN_016_equipo_sin_permiso_en_episodio_sensible_ve_el_resumen_de_la_nota()
+    {
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Resumen),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio,
+                Profesional(Rel(TipoRelacion.Equipo, permiteSensible: false, episodioSensible: true))));
+    }
+
+    [Theory]
+    [InlineData(Accion.Crear, TipoRecurso.NotaClinica)]
+    [InlineData(Accion.Leer, TipoRecurso.Orden)]
+    [InlineData(Accion.Crear, TipoRecurso.Orden)]
+    [InlineData(Accion.Anular, TipoRecurso.Orden)]
+    [InlineData(Accion.Leer, TipoRecurso.SignosVitalesTriaje)]
+    public void RN_016_equipo_sin_permiso_no_crea_notas_ni_lee_ordenes_en_episodio_sensible(Accion accion, TipoRecurso recurso)
+    {
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.EpisodioSensible),
+            PoliticaAcceso.Evaluar(accion, recurso, CtxDeEpisodio,
+                Profesional(Rel(TipoRelacion.Equipo, permiteSensible: false, episodioSensible: true))));
+    }
+
+    [Theory]
+    [MemberData(nameof(CeldasDeEpisodioDelProfesional))]
+    public void RN_016_tratante_y_equipo_con_permiso_ven_completo_en_episodio_sensible(Accion accion, TipoRecurso recurso)
+    {
+        RelacionClinica[] conAcceso =
+        [
+            Rel(TipoRelacion.Tratante, permiteSensible: false, episodioSensible: true),
+            Rel(TipoRelacion.Tratante, permiteSensible: true, episodioSensible: true),
+            Rel(TipoRelacion.Equipo, permiteSensible: true, episodioSensible: true)
+        ];
+
+        foreach (var relacion in conAcceso)
+        {
+            Assert.Equal(
+                Decision.Permitir(NivelAcceso.Completo),
+                PoliticaAcceso.Evaluar(accion, recurso, CtxDeEpisodio, Profesional(relacion)));
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(CeldasDeEpisodioDelProfesional))]
+    public void RN_016_el_permiso_sensible_no_cambia_nada_en_episodio_no_sensible(Accion accion, TipoRecurso recurso)
+    {
+        foreach (var tipo in new[] { TipoRelacion.Tratante, TipoRelacion.Equipo })
+        {
+            foreach (var permiteSensible in new[] { false, true })
+            {
+                Assert.Equal(
+                    Decision.Permitir(NivelAcceso.Completo),
+                    PoliticaAcceso.Evaluar(accion, recurso, CtxDeEpisodio,
+                        Profesional(Rel(tipo, permiteSensible, episodioSensible: false))));
+            }
+        }
+    }
+
+    [Fact]
+    public void RN_016_asistente_lee_la_nota_por_seccion_en_episodio_no_sensible()
+    {
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.PorSeccion),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio, Asistente(Rel(TipoRelacion.Equipo))));
+        // El permiso sensible no cambia el nivel en un episodio no sensible.
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.PorSeccion),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio,
+                Asistente(Rel(TipoRelacion.Equipo, permiteSensible: true))));
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.Orden, CtxDeEpisodio, Asistente(Rel(TipoRelacion.Equipo))));
+    }
+
+    [Fact]
+    public void RN_016_asistente_registra_signos_vitales_de_su_episodio()
+    {
+        var asistente = Asistente(Rel(TipoRelacion.Equipo));
+
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Crear, TipoRecurso.SignosVitalesTriaje, CtxDeEpisodio, asistente));
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Actualizar, TipoRecurso.SignosVitalesTriaje, CtxDeEpisodio, asistente));
+    }
+
+    [Theory]
+    [InlineData(Accion.Leer, TipoRecurso.NotaClinica)]
+    [InlineData(Accion.Leer, TipoRecurso.Orden)]
+    [InlineData(Accion.Leer, TipoRecurso.SignosVitalesTriaje)]
+    [InlineData(Accion.Crear, TipoRecurso.SignosVitalesTriaje)]
+    [InlineData(Accion.Actualizar, TipoRecurso.SignosVitalesTriaje)]
+    public void RN_016_asistente_no_accede_a_episodios_sensibles(Accion accion, TipoRecurso recurso)
+    {
+        RelacionClinica[] relaciones =
+        [
+            Rel(TipoRelacion.Equipo, permiteSensible: false, episodioSensible: true),
+            // El rol manda: ni el permiso sensible ni ser tratante lo abren al asistente.
+            Rel(TipoRelacion.Equipo, permiteSensible: true, episodioSensible: true),
+            Rel(TipoRelacion.Tratante, permiteSensible: true, episodioSensible: true)
+        ];
+
+        foreach (var relacion in relaciones)
+        {
+            Assert.Equal(
+                Prohibido(MotivoDenegacion.EpisodioSensible),
+                PoliticaAcceso.Evaluar(accion, recurso, CtxDeEpisodio, Asistente(relacion)));
+        }
+    }
+
+    [Fact]
+    public void RN_016_resumen_de_seguridad_no_se_filtra_por_sensibilidad()
+    {
+        var episodioSensible = Rel(TipoRelacion.Equipo, permiteSensible: false, episodioSensible: true);
+        var resumenDelPaciente = Ctx(paciente: OtroPaciente);
+
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.ResumenSeguridad, resumenDelPaciente, Profesional(episodioSensible)));
+        // Tampoco para el asistente, que sí queda fuera de los recursos de episodio sensibles.
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.ResumenSeguridad, resumenDelPaciente, Asistente(episodioSensible)));
+    }
+
+    [Fact]
+    public void RN_016_varios_roles_con_relacion_conceden_lo_mas_amplio_y_explican_el_motivo_mas_profundo()
+    {
+        HechosAcceso profesionalYAsistente(RelacionClinica relacion) =>
+            Hechos([Rol.Profesional, Rol.AsistenteClinico], profesionalId: ProfesionalActor, relacion: relacion, hab: HabilitacionVigente);
+
+        // Profesional: Completo; Asistente: PorSeccion.
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Completo),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio,
+                profesionalYAsistente(Rel(TipoRelacion.Equipo))));
+        // Episodio sensible, equipo sin permiso: Profesional ve el resumen y el asistente queda fuera.
+        Assert.Equal(
+            Decision.Permitir(NivelAcceso.Resumen),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio,
+                profesionalYAsistente(Rel(TipoRelacion.Equipo, permiteSensible: false, episodioSensible: true))));
+        // Ningún rol concede: Paciente no tiene celda (R2) y el asistente llegó a R7.
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.EpisodioSensible),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio,
+                Hechos([Rol.Paciente, Rol.AsistenteClinico], profesionalId: ProfesionalActor,
+                    relacion: Rel(TipoRelacion.Equipo, permiteSensible: true, episodioSensible: true))));
+        // Sin relación en ninguno: gana la etapa más profunda (R6) sobre la falta de celda (R2).
+        Assert.Equal(
+            Prohibido(MotivoDenegacion.SinRelacionClinica),
+            PoliticaAcceso.Evaluar(Accion.Leer, TipoRecurso.NotaClinica, CtxDeEpisodio,
+                Hechos([Rol.Paciente, Rol.Profesional], profesionalId: ProfesionalActor, relacion: Rel(TipoRelacion.Ninguna))));
     }
 }
