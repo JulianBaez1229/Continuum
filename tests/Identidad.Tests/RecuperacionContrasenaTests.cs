@@ -9,6 +9,8 @@ internal sealed class TokensAccionFalsos : ITokensAccion
     public Task AgregarAsync(TokenAccion t, CancellationToken ct = default) { Todos.Add(t); return Task.CompletedTask; }
     public Task<TokenAccion?> ObtenerPorHashAsync(string hash, CancellationToken ct = default) =>
         Task.FromResult(Todos.FirstOrDefault(t => t.HashToken == hash));
+    public Task<IReadOnlyList<TokenAccion>> ObtenerPendientesDePacienteAsync(Guid pacienteId, PropositoToken proposito, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<TokenAccion>>(Todos.Where(t => t.PacienteId == pacienteId && t.Proposito == proposito && t.UsadoEn is null).ToList());
     public Task<IReadOnlyList<TokenAccion>> ObtenerPendientesDeUsuarioAsync(Guid usuarioId, PropositoToken proposito, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<TokenAccion>>(Todos.Where(t => t.UsuarioId == usuarioId && t.Proposito == proposito && t.UsadoEn is null).ToList());
     public Task GuardarAsync(IEnumerable<TokenAccion> tokens, CancellationToken ct = default) => Task.CompletedTask;

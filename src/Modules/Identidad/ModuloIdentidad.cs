@@ -50,6 +50,10 @@ public static class ModuloIdentidad
         servicios.AddSingleton<PoliticaContrasena>();
         servicios.AddScoped<ServicioRecuperacionContrasena>();
 
+        servicios.AddScoped<IDirectorioPacientes, DirectorioPacientesNoDisponible>();
+        servicios.AddScoped<IConsentimientos, ConsentimientosNoDisponibles>();
+        servicios.AddScoped<ServicioActivacionPaciente>();
+
         servicios.AddScoped<ServicioInicioSesion>();
         servicios.AddScoped<ServicioMfa>();
         servicios.AddScoped<ServicioAutenticacion>();
@@ -71,7 +75,9 @@ public static class ModuloIdentidad
         servicios.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
             .Configure<IReloj>((o, reloj) => o.TokenValidationParameters.LifetimeValidator =
                 (desde, hasta, _, _) => EmisorTokensJwt.VigenteEn(desde, hasta, reloj.Ahora));
-        servicios.AddAuthorization();
+        servicios.AddAuthorization(o => o.AddPolicy(PoliticasIdentidad.InvitarPacientes, p => p
+            .RequireAuthenticatedUser()
+            .RequireClaim(PoliticasIdentidad.ClavePermiso, PoliticasIdentidad.PermisoInvitarPacientes)));
 
         servicios.AddControllers().AddApplicationPart(typeof(AuthController).Assembly);
         return servicios;

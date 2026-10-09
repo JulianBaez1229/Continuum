@@ -83,3 +83,29 @@ public sealed class MensajeriaIdentidadProvisional(ILogger<MensajeriaIdentidadPr
         return Task.CompletedTask;
     }
 }
+
+/// <summary>
+/// PROVISIONAL hasta el módulo 08: sin directorio de pacientes no se puede invitar ni activar a nadie.
+/// Falla cerrado: ningún paciente existe y ninguna identidad coincide.
+/// </summary>
+public sealed class DirectorioPacientesNoDisponible : IDirectorioPacientes
+{
+    public Task<ContactoPaciente?> ObtenerContactoAsync(Guid pacienteId, CancellationToken ct = default) =>
+        Task.FromResult<ContactoPaciente?>(null);
+
+    public Task<bool> VerificarIdentidadAsync(Guid pacienteId, DateOnly fechaNacimiento, string ultimos4Documento, CancellationToken ct = default) =>
+        Task.FromResult(false);
+
+    public Task VincularCuentaAsync(Guid pacienteId, Guid usuarioId, CancellationToken ct = default) =>
+        throw new NotSupportedException("El módulo 08 (Pacientes) aún no implementa IDirectorioPacientes.");
+}
+
+/// <summary>PROVISIONAL hasta el módulo 08. Inalcanzable mientras el directorio no devuelva pacientes.</summary>
+public sealed class ConsentimientosNoDisponibles : IConsentimientos
+{
+    public VersionesLegales Vigentes(Guid organizacionId) =>
+        throw new NotSupportedException("El módulo 08 (Pacientes) aún no implementa IConsentimientos.");
+
+    public Task RegistrarAceptacionAsync(Guid pacienteId, string tipo, string versionTexto, Guid firmadoPor, DateTimeOffset en, CancellationToken ct = default) =>
+        throw new NotSupportedException("El módulo 08 (Pacientes) aún no implementa IConsentimientos.");
+}

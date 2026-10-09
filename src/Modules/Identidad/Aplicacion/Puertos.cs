@@ -16,6 +16,7 @@ public interface IRepositorioUsuarios
 {
     Task<Usuario?> ObtenerPorCorreoAsync(string correo, CancellationToken ct = default);
     Task<Usuario?> ObtenerPorIdAsync(Guid id, CancellationToken ct = default);
+    Task AgregarAsync(Usuario usuario, CancellationToken ct = default);
     Task GuardarAsync(Usuario usuario, CancellationToken ct = default);
 }
 
@@ -52,6 +53,7 @@ public enum TipoEventoIdentidad
     ContrasenaCambiada,
     InvitacionPacienteEnviada,
     CuentaPacienteActivada,
+    ActivacionPacienteFallida,
     Reautenticacion,
     MfaCorreoHabilitado,
     MfaCorreoDeshabilitado,
@@ -98,6 +100,7 @@ public interface ITokensAccion
 {
     Task AgregarAsync(TokenAccion token, CancellationToken ct = default);
     Task<TokenAccion?> ObtenerPorHashAsync(string hash, CancellationToken ct = default);
+    Task<IReadOnlyList<TokenAccion>> ObtenerPendientesDePacienteAsync(Guid pacienteId, PropositoToken proposito, CancellationToken ct = default);
     /// <summary>Tokens de un usuario y propósito que aún no se han usado (aunque puedan haber caducado).</summary>
     Task<IReadOnlyList<TokenAccion>> ObtenerPendientesDeUsuarioAsync(Guid usuarioId, PropositoToken proposito, CancellationToken ct = default);
     Task GuardarAsync(IEnumerable<TokenAccion> tokens, CancellationToken ct = default);
@@ -115,4 +118,28 @@ public interface IMensajeriaIdentidad
     Task NotificarCambioContrasenaAsync(Usuario usuario, CancellationToken ct = default);
     Task EnviarInvitacionPacienteAsync(Guid pacienteId, CanalInvitacion canal, string destino, string token, DateTimeOffset expiraEn, CancellationToken ct = default);
     Task EnviarCodigoMfaAsync(Usuario usuario, string codigo, DateTimeOffset expiraEn, CancellationToken ct = default);
+}
+
+public sealed record ContactoPaciente(Guid OrganizacionId, string? Correo, string? Telefono, bool TieneCuenta);
+
+/// <summary>
+/// Lo que Identidad necesita del módulo 08 (Pacientes, Dev B) para invitar y activar cuentas. Identidad nunca lee
+/// otros datos del paciente: ni documento completo ni información clínica.
+/// </summary>
+public interface IDirectorioPacientes
+{
+    /// <summary>Null si el paciente no existe. Quien llama compara <c>OrganizacionId</c> con la del solicitante (RN-015).</summary>
+    Task<ContactoPaciente?> ObtenerContactoAsync(Guid pacienteId, CancellationToken ct = default);
+    /// <summary>Compara fecha de nacimiento y los últimos 4 dígitos del documento sin exponer el documento.</summary>
+    Task<bool> VerificarIdentidadAsync(Guid pacienteId, DateOnly fechaNacimiento, string ultimos4Documento, CancellationToken ct = default);
+    Task VincularCuentaAsync(Guid pacienteId, Guid usuarioId, CancellationToken ct = default);
+}
+
+public sealed record VersionesLegales(string Terminos, string AvisoPrivacidad);
+
+/// <summary>Registro de consentimientos (entidad <c>consentimiento</c>, módulo 08).</summary>
+public interface IConsentimientos
+{
+    VersionesLegales Vigentes(Guid organizacionId);
+    Task RegistrarAceptacionAsync(Guid pacienteId, string tipo, string versionTexto, Guid firmadoPor, DateTimeOffset en, CancellationToken ct = default);
 }
