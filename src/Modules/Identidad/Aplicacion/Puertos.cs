@@ -53,3 +53,16 @@ public sealed record EventoIdentidad(
     Guid? UsuarioId = null,
     Guid? OrganizacionId = null,
     string? Detalle = null);
+
+public enum PropositoDesafio { SegundoFactor, ConfigurarMfa }
+
+/// <summary>
+/// Tokens de acceso (15 min, RF-IAM-006) y desafíos de corta vida que atan el segundo factor a un
+/// primer factor ya superado. Un desafío nunca sirve como token de acceso.
+/// </summary>
+public interface IEmisorTokens
+{
+    string EmitirAcceso(Usuario usuario);
+    string EmitirDesafio(Guid usuarioId, PropositoDesafio proposito);
+    Guid? ValidarDesafio(string token, PropositoDesafio proposito);
+}
