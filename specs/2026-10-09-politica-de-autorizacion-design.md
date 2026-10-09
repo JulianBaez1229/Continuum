@@ -53,7 +53,8 @@ src/Modules/Identidad/
 ├── Dominio/Autorizacion/
 │   ├── Rol.cs, Accion.cs, TipoRecurso.cs, AlcanceReporte.cs
 │   ├── NivelAcceso.cs, Decision.cs, MotivoDenegacion.cs
-│   ├── Hechos.cs               ← PerfilActor, RelacionClinica, HabilitacionProfesional
+│   ├── Hechos.cs               ← PerfilActor, RelacionClinica, HabilitacionProfesional,
+│   │                              ContextoRecurso, HechosAcceso
 │   ├── MatrizPermisos.cs       ← la tabla del módulo 03 §4
 │   └── PoliticaAcceso.cs       ← función pura (sin I/O)
 └── Aplicacion/Autorizacion/
@@ -122,6 +123,8 @@ public sealed record Decision
 }
 ```
 
+`ContextoRecurso` se declara en `Dominio/Autorizacion/Hechos.cs` (namespace `Continuum.Identidad.Dominio.Autorizacion`), porque `PoliticaAcceso` lo consume y `Dominio` no puede referenciar `Aplicacion`. Se muestra aquí junto a la solicitud por claridad.
+
 ```csharp
 namespace Continuum.Identidad.Aplicacion.Autorizacion;
 
@@ -175,7 +178,7 @@ La **organización del actor** no viaja en la solicitud: la devuelve `IRolesPorS
 | Equipo **sin** `PermiteSensible` | `Resumen` solo en `NotaClinica`; en lo demás `EPISODIO_SENSIBLE` | `EPISODIO_SENSIBLE` (supuesto a) |
 | Asistente clínico | `EPISODIO_SENSIBLE` | `EPISODIO_SENSIBLE` |
 
-**R8, borde de la licencia.** La especialidad evaluada es `RelacionClinica.EspecialidadId` (las escrituras clínicas siempre exigen relación, R6). La habilitación del puerto trae `VigenteHasta` como `DateOnly`. «Hoy» es la fecha de `IReloj.Ahora` en la zona horaria de la sede activa. Hay vencimiento si `hoy > VigenteHasta`. Si se informa `ProcedimientoId` y no figura en la lista permitida: `SIN_HABILITACION`. Una licencia que venció ayer se deniega; una que vence hoy sigue vigente hoy (`CA-ROL-003`).
+**R8, borde de la licencia.** La especialidad evaluada es `RelacionClinica.EspecialidadId` (las escrituras clínicas siempre exigen relación, R6). La habilitación del puerto trae `VigenteHasta` como `DateOnly`. «Hoy» es la fecha de `IReloj.Ahora` en la zona horaria de la sede activa. Hay vencimiento si `hoy > VigenteHasta`. Si la habilitación no es de esa especialidad, o se informa `ProcedimientoId` y no figura en la lista permitida: `SIN_HABILITACION`, que se evalúa **antes** que el vencimiento. Una licencia que venció ayer se deniega; una que vence hoy sigue vigente hoy (`CA-ROL-003`).
 
 **Resultado.** Si pasa R0–R8: `Permitir(nivel)`. El nivel sale de la celda, ajustado por R7: `PorSeccion` para el asistente en `NotaClinica`, `Resumen` para el equipo sin permiso, `Agregado` para la dirección en citas, agenda y reportes, y `Completo` en lo demás.
 
@@ -248,7 +251,7 @@ public sealed record EventoAutorizacion(
 ## 10. Manejo de fallos
 
 - Si un puerto lanza una excepción, esta se propaga: la solicitud falla y no se concede acceso.
-- Si un puerto necesario devuelve `null` (excepto `IRolesPorSede`, ver R0) o el contexto no trae un dato exigido (`EpisodioId`, `SedeId`, `AlcanceReporte`), la decisión es `Denegado(Prohibido, DATOS_INSUFICIENTES)` y se audita.
+- Un `null` de un puerto significa algo distinto según el puerto: `IRolesPorSede` → `SIN_ROL_EN_SEDE` (R0); `IHabilitaciones` → `SIN_HABILITACION` (R8: el profesional no tiene habilitación en esa especialidad); `IVinculoPaciente` → `NO_ES_PROPIO` (R4: el usuario no es paciente); `IRelacionClinica` → `DATOS_INSUFICIENTES`. Lo mismo ocurre si el contexto no trae un dato exigido (`EpisodioId` en recursos de episodio, `SedeId` con `[S]`, `AlcanceReporte` en reportes). `DATOS_INSUFICIENTES` es `Denegado(Prohibido, ...)` y se audita. Un profesional sin ficha (`ProfesionalId` nulo) en un recurso con `[T]` es `SIN_RELACION_CLINICA`, sin consultar el puerto.
 - Si falla `IAuditoriaAutorizacion.RegistrarDenegacionAsync`, la excepción se propaga. Se prefiere fallar a perder en silencio un evento crítico. Nunca se devuelve `Permitido` en estos casos.
 - Los logs técnicos no incluyen contenido clínico, identificadores de documento ni tokens.
 
