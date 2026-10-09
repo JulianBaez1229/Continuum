@@ -38,6 +38,12 @@ public static class ModuloIdentidad
         servicios.AddScoped<IAuditoriaIdentidad, AuditoriaIdentidadProvisional>();
         servicios.AddScoped<IAvisosSeguridad, AvisosSeguridadProvisional>();
 
+        var opcionesSesion = config.GetSection(OpcionesSesion.Seccion).Get<OpcionesSesion>() ?? new OpcionesSesion();
+        servicios.AddSingleton(opcionesSesion);
+        servicios.AddSingleton<IPoliticaSesion, PoliticaSesionConfigurada>();
+        servicios.AddScoped<ISesiones, RepositorioSesionesEf>();
+        servicios.AddScoped<ServicioSesiones>();
+
         servicios.AddScoped<ServicioInicioSesion>();
         servicios.AddScoped<ServicioMfa>();
         servicios.AddScoped<ServicioAutenticacion>();
@@ -46,6 +52,7 @@ public static class ModuloIdentidad
             .AddJwtBearer(o =>
             {
                 o.MapInboundClaims = false;
+                o.Events = EventosJwt.Crear();
                 o.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidIssuer = jwt.Emisor,

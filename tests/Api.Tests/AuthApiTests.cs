@@ -28,10 +28,24 @@ internal sealed class RepositorioEnMemoria : IRepositorioUsuarios
     public Task GuardarAsync(Usuario usuario, CancellationToken ct = default) => Task.CompletedTask;
 }
 
-public sealed class FabricaApi : WebApplicationFactory<Program>
+internal sealed class SesionesEnMemoria : ISesiones
+{
+    private readonly List<Sesion> _sesiones = [];
+    public Task AgregarAsync(Sesion s, CancellationToken ct = default) { _sesiones.Add(s); return Task.CompletedTask; }
+    public Task<Sesion?> ObtenerPorIdAsync(Guid id, CancellationToken ct = default) =>
+        Task.FromResult(_sesiones.FirstOrDefault(s => s.Id == id));
+    public Task<Sesion?> ObtenerPorHashRenovacionAsync(string hash, CancellationToken ct = default) =>
+        Task.FromResult(_sesiones.FirstOrDefault(s => s.HashRenovacion == hash || s.HashRenovacionAnterior == hash));
+    public Task<IReadOnlyList<Sesion>> ObtenerNoRevocadasDeUsuarioAsync(Guid usuarioId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<Sesion>>(_sesiones.Where(s => s.UsuarioId == usuarioId && s.RevocadaEn is null).ToList());
+    public Task GuardarAsync(IEnumerable<Sesion> sesiones, CancellationToken ct = default) => Task.CompletedTask;
+}
+
+public class FabricaApi : WebApplicationFactory<Program>
 {
     internal RelojDePrueba Reloj { get; } = new();
     internal RepositorioEnMemoria Repositorio { get; } = new();
+    internal SesionesEnMemoria Sesiones { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -44,6 +58,8 @@ public sealed class FabricaApi : WebApplicationFactory<Program>
             s.AddSingleton<IReloj>(Reloj);
             s.RemoveAll<IRepositorioUsuarios>();
             s.AddSingleton<IRepositorioUsuarios>(Repositorio);
+            s.RemoveAll<ISesiones>();
+            s.AddSingleton<ISesiones>(Sesiones);
         });
     }
 }
@@ -66,7 +82,8 @@ public class AuthApiTests(FabricaApi fabrica) : IClassFixture<FabricaApi>
 
     private static async Task<T> Leer<T>(HttpResponseMessage r) => (await r.Content.ReadFromJsonAsync<T>())!;
 
-    private sealed record Login_(string Estado, string? TokenAcceso, string? TokenDesafio, DateTimeOffset? BloqueadoHasta);
+    private sealed record Login_(
+        string Estado, string? TokenAcceso, string? TokenDesafio, DateTimeOffset? BloqueadoHasta, string? TokenRenovacion);
     private sealed record InicioMfa_(string Secreto, string UriOtpAuth);
     private sealed record Confirmacion_(string[] CodigosRecuperacion);
 
