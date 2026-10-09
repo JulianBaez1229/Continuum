@@ -1,0 +1,9 @@
+codigo,nombre,descripcion,categoria_sensible,tipos_profesional,facultad_prescribir,estado,version
+PSI,Psicología,Evaluación y psicoterapia individual y grupal,true,psicologo,false,publicado,1.0.0
+PSQ,Psiquiatría,Diagnóstico y tratamiento psiquiátrico incluido manejo farmacológico,true,medico,true,publicado,1.0.0
+MGE,Medicina general,Atención primaria de adultos,false,medico,true,publicado,1.0.0
+CAR,Cardiología,Diagnóstico y control de enfermedades cardiovasculares,false,medico,true,publicado,1.0.0
+ODO,Odontología,Salud bucal preventiva y procedimientos dentales,false,odontologo,true,publicado,1.0.0
+FIS,Fisioterapia,Rehabilitación física y ejercicio terapéutico,false,fisioterapeuta,false,publicado,1.0.0
+NUT,Nutrición,Evaluación nutricional y planes alimentarios,false,nutricionista,false,publicado,1.0.0
+PED,Pediatría,Atención integral de niños y adolescentes,false,medico,true,publicado,1.0.0

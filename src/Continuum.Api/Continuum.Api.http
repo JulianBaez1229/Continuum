@@ -1,0 +1,6 @@
+@Continuum.Api_HostAddress = http://localhost:5223
+
+GET {{Continuum.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

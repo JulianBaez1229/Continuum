@@ -1,0 +1,41 @@
+/* Tokens de diseño — copiados de docs/modulos/28 §2.7 (ADR-008). Único archivo con valores de color. */
+:root {
+  --color-brand: #263E2E;        --color-brand-strong: #1C2B22;
+  --color-brand-contrast: #FFFFFF; --color-brand-soft: #D0DEC3;
+  --color-accent: #E7D5B1;       --color-secondary: #1B3337;
+  --color-bg: #F1F4EC;           --color-surface: #FFFFFF;
+  --color-surface-alt: #DDE6D2;  --color-surface-sage: #C9D7BD;
+  --color-border: #C9D3BE;       --color-border-strong: #6F8068;
+  --color-text: #1A231D;         --color-text-muted: #4F5E52;
+  --color-success: #3E5835;      --color-success-soft: #E4EDDC;
+  --color-warning: #7A5328;      --color-warning-soft: #F4E9D6;
+  --color-danger: #A93226;       --color-danger-soft: #F8E4E1;
+  --color-info: #2A5357;         --color-info-soft: #DDEBEA;
+  --color-sensitive: #2C4257;    --color-sensitive-soft: #E1E7EE;
+  --mood-1: #3E5835; --mood-2: #2A5357; --mood-3: #7A5328; --mood-4: #263E4A;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-bg: #141C17;           --color-surface: #1E2A23;
+    --color-surface-alt: #26352C;  --color-border: #33443A;
+    --color-border-strong: #7C8E75;
+    --color-text: #E9E4D2;         --color-text-muted: #A9B5A3;
+    --color-brand: #9FBF93;        --color-brand-contrast: #141C17;
+    --color-brand-soft: #2C3F32;   --color-accent: #E7D5B1;
+    --color-success: #9FCB8E;      --color-warning: #E0B77A;
+    --color-danger: #F09A8E;       --color-info: #8EC3C4;
+    --color-sensitive: #A9BDD6;
+  }
+}
+:root[data-theme="dark"] {
+  --color-bg: #141C17;           --color-surface: #1E2A23;
+  --color-surface-alt: #26352C;  --color-border: #33443A;
+  --color-border-strong: #7C8E75;
+  --color-text: #E9E4D2;         --color-text-muted: #A9B5A3;
+  --color-brand: #9FBF93;        --color-brand-contrast: #141C17;
+  --color-brand-soft: #2C3F32;   --color-accent: #E7D5B1;
+  --color-success: #9FCB8E;      --color-warning: #E0B77A;
+  --color-danger: #F09A8E;       --color-info: #8EC3C4;
+  --color-sensitive: #A9BDD6;
+}

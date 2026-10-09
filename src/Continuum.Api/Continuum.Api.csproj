@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.19" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Modules\Organizacion\Continuum.Organizacion.csproj" />
+    <ProjectReference Include="..\Modules\Identidad\Continuum.Identidad.csproj" />
+    <ProjectReference Include="..\Modules\Pacientes\Continuum.Pacientes.csproj" />
+    <ProjectReference Include="..\Modules\Catalogo\Continuum.Catalogo.csproj" />
+    <ProjectReference Include="..\Modules\Agenda\Continuum.Agenda.csproj" />
+    <ProjectReference Include="..\Modules\HistoriaClinica\Continuum.HistoriaClinica.csproj" />
+    <ProjectReference Include="..\Modules\Formularios\Continuum.Formularios.csproj" />
+    <ProjectReference Include="..\Modules\Comunicacion\Continuum.Comunicacion.csproj" />
+    <ProjectReference Include="..\Modules\Reportes\Continuum.Reportes.csproj" />
+    <ProjectReference Include="..\Modules\Auditoria\Continuum.Auditoria.csproj" />
+    <ProjectReference Include="..\Shared\Continuum.Shared.csproj" />
+  </ItemGroup>
+
+</Project>
