@@ -19,7 +19,7 @@ public class InicioSesionTests
     public InicioSesionTests()
     {
         var hasher = new HasheadorFalso();
-        _usuario = Usuario.Crear(Guid.NewGuid(), Correo, hasher.Hashear(Clave));
+        _usuario = Usuario.Crear(Guid.NewGuid(), Correo, hasher.Hashear(Clave), requiereMfa: false);
         _repo.Agregar(_usuario);
         _servicio = new ServicioInicioSesion(_repo, hasher, _reloj, _auditoria, _avisos);
     }
